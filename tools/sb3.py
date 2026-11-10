@@ -91,18 +91,72 @@ class Menu(E):
     """A shadow-menu input (e.g. costume name).  value may be Lit/Expr."""
 
     def __init__(self, opcode, field, value):
-        self.opcode, self.field, self.value = opcode, field, value
+        self.opcode, self.field, self.value = opcode, field, lit(value)
 
 
 class Ref(E):
-    def __init__(self, kind, name):
-        self.kind, self.name = kind, name  # kind: 'var' | 'list' | 'arg'
+    def __init__(self, kind, name, scope=None):
+        self.kind, self.name, self.scope = kind, name, scope  # kind: 'var' | 'list' | 'arg'; scope = sprite for locals
 
 
 class Reg:
     """Variable / list registry (all global on the Stage)."""
     vars = {}   # name -> (id, initial)
     lists = {}  # name -> (id, initial list)
+
+
+class Unit:
+    """One target (sprite) being built: own procedures, scripts, local variables and costumes.
+    The special unit 'lib' holds procedures that are copied into every unit with uselib=True."""
+
+    def __init__(self, name, uselib=True, sprite=True):
+        self.name, self.uselib, self.sprite = name, uselib, sprite
+        self.procs, self.scripts, self.locals = {}, [], {}
+        self.costumes = []
+        self.visible, self.x, self.y, self.size = False, 0, 0, 100
+        self.prune = False          # drop procedures that are never called (lib copies)
+
+
+UNITS = {}
+_DEF = []          # stack of units being defined
+_COMPILING = [None]
+
+
+def unit(name, uselib=True, sprite=True):
+    """with unit('Calculator'): ... everything defined inside belongs to that sprite"""
+    if name not in UNITS:
+        UNITS[name] = Unit(name, uselib, sprite)
+
+    class _Ctx:
+        def __enter__(self):
+            _DEF.append(UNITS[name])
+            return UNITS[name]
+
+        def __exit__(self, *a):
+            _DEF.pop()
+    return _Ctx()
+
+
+def cur_unit():
+    if _DEF:
+        return _DEF[-1]
+    if 'main' not in UNITS:
+        UNITS['main'] = Unit('main')
+    return UNITS['main']
+
+
+def VL(name, init=0):
+    """sprite-local variable ("for this sprite only" - clones get their own copy)"""
+    u = cur_unit()
+    if name not in u.locals:
+        u.locals[name] = [uid(), init]
+    return Ref('var', name, scope=u.name)
+
+
+def _var_id(ref):
+    if ref.scope:
+        return UNITS[ref.scope].locals[ref.name][0]
+    return Reg.vars[ref.name][0]
 
 
 def V(name, init=0):
@@ -263,7 +317,7 @@ def stop_this():
 
 def _target(ref):
     if ref.kind == 'var':
-        return {'VARIABLE': [ref.name, Reg.vars[ref.name][0]]}
+        return {'VARIABLE': [ref.name, _var_id(ref)]}
     return {'LIST': [ref.name, Reg.lists[ref.name][0]]}
 
 
@@ -298,6 +352,39 @@ def ls_set(key, val): return emit(St('localstorage_set', {'KEY': lit(key), 'VALU
 def ls_get(key): return Op('localstorage_get', {'KEY': lit(key)})
 
 
+BCASTS = {}
+
+
+def bcast_id(name):
+    if name not in BCASTS:
+        BCASTS[name] = uid()
+    return BCASTS[name]
+
+
+class ColorIn(E):
+    """input of a COLOR-type extension argument (colour picker shadow)"""
+    def __init__(self, value):
+        self.value = lit(value)
+
+
+class BcastLit(E):
+    def __init__(self, name):
+        self.name = name
+
+
+def broadcast(name): return emit(St('event_broadcast', {'BROADCAST_INPUT': BcastLit(name)}))
+def broadcast_wait(name): return emit(St('event_broadcastandwait', {'BROADCAST_INPUT': BcastLit(name)}))
+def broadcast_wait_dyn(expr): return emit(St('event_broadcastandwait', {'BROADCAST_INPUT': Menu('event_broadcast_menu', 'BROADCAST_OPTION', lit(expr))}))
+def create_clone(of='_myself_'): return emit(St('control_create_clone_of', {'CLONE_OPTION': Menu('control_create_clone_of_menu', 'CLONE_OPTION', lit(of))}))
+def delete_clone(): return emit(St('control_delete_this_clone'))
+def go_front(): return emit(St('looks_gotofrontback', {}, {'FRONT_BACK': ['front', None]}))
+def go_back(): return emit(St('looks_gotofrontback', {}, {'FRONT_BACK': ['back', None]}))
+def set_x(x): return emit(St('motion_setx', {'X': lit(x)}))
+def set_y(y): return emit(St('motion_sety', {'Y': lit(y)}))
+def call_ext(opcode, **inputs): return emit(St(opcode, {k: lit(v) for k, v in inputs.items()}))
+def ext_reporter(opcode, **inputs): return Op(opcode, {k: lit(v) for k, v in inputs.items()})
+
+
 def stage_size(w, h): return emit(St('jgRuntime_setStageSize', {'WIDTH': lit(w), 'HEIGHT': lit(h)}))
 def set_fps(f): return emit(St('jgRuntime_setMaxFrameRate', {'FRAMERATE': lit(f)}))
 
@@ -324,26 +411,28 @@ class ProcDef:
 
 
 class _ProcNS:
-    registry = {}
-
     def __getattr__(self, name):
-        reg = _ProcNS.registry
-        if name not in reg:
-            # allow call-before-define: resolved lazily
-            raise AttributeError(f'procedure {name!r} is not defined (yet)')
-        return reg[name].call
+        u = _COMPILING[0] or cur_unit()
+        if name in u.procs:
+            return u.procs[name].call
+        if u.uselib and 'lib' in UNITS and name in UNITS['lib'].procs:
+            return UNITS['lib'].procs[name].call
+        raise AttributeError(f'procedure {name!r} is not defined in sprite {u.name!r}')
 
 
 P = _ProcNS()
 
 
-def proc(argnames='', warp=True, name=None):
+DEFAULT_WARP = [True]      # sprite build: False (a broadcast-and-wait inside a warp procedure busy-waits)
+
+
+def proc(argnames='', warp=None, name=None):
     argnames = argnames.split() if isinstance(argnames, str) else list(argnames)
 
     def deco(fn):
         nm = name or fn.__name__
-        pd = ProcDef(nm, argnames, fn, warp)
-        _ProcNS.registry[nm] = pd
+        pd = ProcDef(nm, argnames, fn, DEFAULT_WARP[0] if warp is None else warp)
+        cur_unit().procs[nm] = pd
         return pd.call
     return deco
 
@@ -352,8 +441,6 @@ def proc(argnames='', warp=True, name=None):
 # Scripts (top-level stacks)
 class Script:
     """with Script('flag'): ...   hats: flag | always(PM) | key:<name>"""
-    all = []
-
     def __init__(self, hat='flag', x=0, y=0):
         self.hat = hat
         self.body = []
@@ -361,7 +448,7 @@ class Script:
 
     def __enter__(self):
         _stack.append(self.body)
-        Script.all.append(self)
+        cur_unit().scripts.append(self)
         return self
 
     def __exit__(self, *a):
@@ -389,6 +476,14 @@ class Emitter:
         node = lit(node)
         if isinstance(node, Lit):
             return [1, self.literal(node.v)]
+        if isinstance(node, ColorIn):
+            if isinstance(node.value, Lit):
+                return [1, [9, str(node.value.v)]]
+            if isinstance(node.value, Ref) and node.value.kind == 'var':
+                return [3, [12, node.value.name, _var_id(node.value)], [9, '#000000']]
+            return [3, self.reporter(node.value, parent), [9, '#000000']]
+        if isinstance(node, BcastLit):
+            return [1, [11, node.name, bcast_id(node.name)]]
         if isinstance(node, Menu):
             sid = uid()
             self.blocks[sid] = {
@@ -400,7 +495,7 @@ class Emitter:
             return [3, bid, sid]
         if isinstance(node, Ref):
             if node.kind == 'var':
-                return [3, [12, node.name, Reg.vars[node.name][0]], [10, '']]
+                return [3, [12, node.name, _var_id(node)], [10, '']]
             if node.kind == 'list':
                 return [3, [13, node.name, Reg.lists[node.name][0]], [10, '']]
             bid = self.reporter(node, parent)
@@ -416,7 +511,7 @@ class Emitter:
         if isinstance(node, Ref) and node.kind in ('var', 'list'):
             bid = uid()
             if node.kind == 'var':
-                f = {'VARIABLE': [node.name, Reg.vars[node.name][0]]}
+                f = {'VARIABLE': [node.name, _var_id(node)]}
                 op = 'data_variable'
             else:
                 f = {'LIST': [node.name, Reg.lists[node.name][0]]}
@@ -474,17 +569,62 @@ class Emitter:
         return first
 
 
-def compile_target_blocks():
+def _collect_calls(node, acc):
+    if isinstance(node, list):
+        for n in node:
+            _collect_calls(n, acc)
+    elif isinstance(node, St):
+        if node.opcode == 'procedures_call':
+            acc.add(node.mutation['proccode'])
+        for v in node.inputs.values():
+            _collect_calls(v, acc)
+        for v in node.subs.values():
+            _collect_calls(v, acc)
+    elif isinstance(node, Op):
+        for v in node.inputs.values():
+            _collect_calls(v, acc)
+    elif isinstance(node, (Menu, ColorIn)):
+        _collect_calls(node.value, acc)
+
+
+def compile_target_blocks(unit_=None):
+    u = unit_ or cur_unit()
+    _COMPILING[0] = u
     blocks = {}
     em = Emitter(blocks)
     layout = []   # (top-level block id, number of blocks in the stack) -> editor positions
     # procedures
-    for pd in _ProcNS.registry.values():
+    procs = list(u.procs.values())
+    if u.uselib and 'lib' in UNITS and u.name != 'lib':
+        procs = list(UNITS['lib'].procs.values()) + procs
+    bodies = {}
+    for pd in procs:
         body = []
         _stack.append(body)
-        args = [Arg(a) for a in pd.argnames]
-        pd.fn(*args)
+        pd.fn(*[Arg(a) for a in pd.argnames])
         _stack.pop()
+        bodies[pd.name] = body
+    if u.prune:
+        by_code = {pd.proccode: pd for pd in procs}
+        roots = []
+        for sc in u.scripts:
+            roots.append(sc.body)
+        for pd in u.procs.values():
+            roots.append(bodies[pd.name])
+        seen = set()
+        todo = list(roots)
+        while todo:
+            lst = todo.pop()
+            codes = set()
+            _collect_calls(lst, codes)
+            for c in codes:
+                pd = by_code.get(c)
+                if pd and pd.name not in seen:
+                    seen.add(pd.name)
+                    todo.append(bodies[pd.name])
+        procs = [pd for pd in procs if pd.name in seen or pd.name in u.procs]
+    for pd in procs:
+        body = bodies[pd.name]
         defid, protoid = uid(), uid()
         blocks[defid] = {'opcode': 'procedures_definition', 'next': None, 'parent': None,
                          'inputs': {'custom_block': [1, protoid]}, 'fields': {}, 'shadow': False,
@@ -509,12 +649,16 @@ def compile_target_blocks():
             blocks[first]['parent'] = defid
         layout.append((defid, len(blocks) - n0 + 3))
     # scripts
-    for sc in Script.all:
+    for sc in u.scripts:
         hat_id = uid()
         if sc.hat == 'flag':
             hb = {'opcode': 'event_whenflagclicked', 'fields': {}}
         elif sc.hat == 'always':
             hb = {'opcode': 'event_always', 'fields': {}}
+        elif sc.hat.startswith('receive:'):
+            hb = {'opcode': 'event_whenbroadcastreceived', 'fields': {'BROADCAST_OPTION': [sc.hat[8:], bcast_id(sc.hat[8:])]}}
+        elif sc.hat == 'clone':
+            hb = {'opcode': 'control_start_as_clone', 'fields': {}}
         elif sc.hat.startswith('key:'):
             hb = {'opcode': 'event_whenkeypressed', 'fields': {'KEY_OPTION': [sc.hat[4:], None]}}
         else:
@@ -534,6 +678,7 @@ def compile_target_blocks():
             y = 0
         blocks[bid]['x'], blocks[bid]['y'] = x, y
         y += h + 40
+    _COMPILING[0] = None
     return blocks
 
 
@@ -573,6 +718,38 @@ def build_project(path, sprite_name, sprite_costumes, backdrops, extensions=(), 
         z.writestr('project.json', json.dumps(project, separators=(',', ':')))
         seen = set()
         for c in list(backdrops) + list(sprite_costumes):
+            if c.md5 not in seen:
+                seen.add(c.md5)
+                z.writestr(c.md5 + '.svg', c.svg)
+    return project
+
+
+def build_multi(path, backdrops, extensions=(), extension_urls=None, order=None):
+    """Compile every sprite unit (UNITS) into one project: Stage + one target per sprite."""
+    sprites = [UNITS[n] for n in order] if order else [u for u in UNITS.values() if u.sprite and u.name != 'lib']
+    targets = []
+    for i, u in enumerate(sprites):
+        blocks = compile_target_blocks(u)
+        targets.append({'isStage': False, 'name': u.name,
+                        'variables': {vid: [n, init] for n, (vid, init) in u.locals.items()},
+                        'lists': {}, 'broadcasts': {}, 'blocks': blocks, 'comments': {}, 'currentCostume': 0,
+                        'costumes': [c.meta() for c in u.costumes], 'sounds': [], 'volume': 100,
+                        'layerOrder': i + 1, 'visible': u.visible, 'x': u.x, 'y': u.y, 'size': u.size,
+                        'direction': 90, 'draggable': False, 'rotationStyle': 'all around'})
+    stage = {'isStage': True, 'name': 'Stage',
+             'variables': {vid: [n, init] for n, (vid, init) in Reg.vars.items()},
+             'lists': {lid: [n, init] for n, (lid, init) in Reg.lists.items()},
+             'broadcasts': {bid: n for n, bid in BCASTS.items()}, 'blocks': {}, 'comments': {},
+             'currentCostume': 0, 'costumes': [c.meta() for c in backdrops], 'sounds': [], 'volume': 100,
+             'layerOrder': 0, 'tempo': 60, 'videoTransparency': 50, 'videoState': 'on', 'textToSpeechLanguage': None}
+    project = {'targets': [stage] + targets, 'monitors': [], 'extensions': list(extensions),
+               'extensionURLs': dict(extension_urls or {}), 'extensionData': {}, 'customFonts': [],
+               'meta': {'semver': '3.0.0', 'vm': '0.2.0', 'origin': 'PenguinMod', 'agent': '',
+                        'platform': {'name': 'PenguinMod', 'url': 'https://penguinmod.com/', 'version': 'stable'}}}
+    with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as z:
+        z.writestr('project.json', json.dumps(project, separators=(',', ':')))
+        seen = set()
+        for c in list(backdrops) + [c for u in sprites for c in u.costumes]:
             if c.md5 not in seen:
                 seen.add(c.md5)
                 z.writestr(c.md5 + '.svg', c.svg)

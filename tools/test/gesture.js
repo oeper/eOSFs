@@ -85,6 +85,21 @@ const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98
   const gw = (await V('ga_s')) * 640;
   expect('grab continues from current size (eases, no jump)', gw >= ow - 5 && gw <= (ow + 614) / 2 + 40, `${gw} vs ${ow}`);
   await h.mouse(320, 350, false); await h.frames(20);
+  // ---- tapping the icon of an app that is still opening continues the animation (no restart)
+  await h.drag(320, 350, 320, 140, 6); await h.frames(16);
+  await h.click(...icon(3), 1); await h.frames(2);
+  const t1 = await V('open_t');
+  await h.click(...icon(3), 1); await h.frames(1);
+  const t2 = await V('open_t');
+  expect('second tap while opening does not restart', t2 > t1 && await V('screen') === 3, `${t1} -> ${t2}`);
+  await h.frames(16);
+  expect('opened normally', await V('open_t') >= 10 && await V('cur_w') === 640);
+  // ---- tapping a closing app's icon reopens it from the closing window (no jump), then keeps going
+  await h.drag(320, 350, 320, 140, 6); await h.frames(2);
+  await h.click(...icon(3), 1);
+  const c1 = await V('cur_w'); await h.click(...icon(3), 1); await h.frames(1);
+  expect('second tap while reopening is ignored too', await V('cur_w') >= c1 && await V('screen') === 3, `${c1} -> ${await V('cur_w')}`);
+  await h.frames(16);
   // ---- drag a little and release low -> snaps back
   await h.click(...icon(3)); await h.frames(14);
   await h.mouse(320, 350, false); await h.frames(1);

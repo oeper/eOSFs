@@ -12,6 +12,11 @@ you haven't seen. Keep every suite green, add tests for each feature, commit + p
 * The user runs this in **real PenguinMod** (stage can be any size), I can't – I only have stock scratch-vm. Be explicit about anything that depends on
   PenguinMod-only blocks. The user has screenshots from the real thing; trust them over my harness.
 
+## Status (update this when you finish things)
+Done: gesture bar (resize, morph, interruptible, swipe-hold switcher as a real carousel, sideways app switching, customisable navigation), time-based
+animations, live recents, and a **sprite edition** (`eOS-sprites.pmp`: app sprites + clone UI elements + Iris Text) that passes the same suites.
+Still open: items below (renumbered); verify the sprite edition in real PenguinMod and replace the Iris stand-in once the real extension is testable.
+
 ## Backlog (the user asked for all of these; do them in this order, one commit each)
 1. **Gesture completeness**
    * *Back gesture animation*: edge swipe shows the app following the finger (shifts/scales a little, a back chevron pill appears at the edge); release past

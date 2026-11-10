@@ -27,7 +27,8 @@ def store_save():
     ls_set('fs', V('_sv'))
     ls_set('settings', join(V('dark'), SEP, V('accent'), SEP, V('wall'), SEP, V('bright'), SEP, V('wifi'), SEP,
                             V('bt'), SEP, V('h24'), SEP, V('pin'), SEP, V('sn_best'), SEP, V('navmode'), SEP,
-                            V('anim_n'), SEP))
+                            V('anim_n'), SEP, V('nav_col'), SEP, V('nav_barw'), SEP, V('nav_barh'), SEP, V('nav_close'), SEP,
+                            V('nav_swipe'), SEP, V('nav_edge'), SEP, V('nav_hold'), SEP, V('nav_tap'), SEP))
 
 
 @proc('s')
@@ -53,9 +54,12 @@ def store_load():
     S('_ld', ls_get('settings'))
     with If(length(V('_ld')) > 8):
         P.split_to_tmp(V('_ld'))
-        with If(listlen(L('ld_tmp')) == 11):
+        with If(listlen(L('ld_tmp')) >= 11):
             S('navmode', item(L('ld_tmp'), 10))
             S('anim_n', item(L('ld_tmp'), 11))
+        with If(listlen(L('ld_tmp')) == 19):
+            for _i, _n in enumerate(('nav_col', 'nav_barw', 'nav_barh', 'nav_close', 'nav_swipe', 'nav_edge', 'nav_hold', 'nav_tap')):
+                S(_n, item(L('ld_tmp'), 12 + _i))
         with If(listlen(L('ld_tmp')) >= 9):
             S('dark', item(L('ld_tmp'), 1))
             S('accent', item(L('ld_tmp'), 2))

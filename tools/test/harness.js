@@ -30,8 +30,9 @@ async function open(pmp, opts = {}) {
     const RC = vm.runtime.constructor;
     Object.defineProperty(RC, 'STAGE_WIDTH', { get: () => 640 });
     Object.defineProperty(RC, 'STAGE_HEIGHT', { get: () => 360 });
+    Object.defineProperty(RC, 'MAX_CLONES', { get: () => 2000 });
     const origLoad = vm.extensionManager.loadExtensionURL.bind(vm.extensionManager);
-    vm.extensionManager.loadExtensionURL = (id) => (id.startsWith('jgRuntime') || id.includes('local-storage') || id === 'localstorage') ? Promise.resolve() : origLoad(id);   // PM-only / URL extensions
+    vm.extensionManager.loadExtensionURL = (id) => (id.startsWith('jgRuntime') || id === 'g1nxIrisText' || id.includes('iris-text') || id.includes('local-storage') || id === 'localstorage') ? Promise.resolve() : origLoad(id);   // PM-only / URL extensions
     // shim for the TurboWarp Local Storage extension
     const store = window.__store = Object.assign({}, window.__initStore || {});
     let pid = '';
@@ -64,6 +65,59 @@ async function open(pmp, opts = {}) {
     const pt = vm.runtime.ioDevices.clock._projectTimer;
     pt.nowObj = { now: () => window.__t };
     pt.start();
+
+    // ---- stand-in for the Iris Text extension (renders the string onto the sprite's own skin with a 2D canvas)
+    const IR = 'g1nxIrisText_';
+    const st = (t) => (t.__iris = t.__iris || { size: 32, color: '#9966ff', maxw: null, lh: 1.2, text: '', w: 0, h: 0, skin: null, dirty: true, on: false });
+    const P = vm.runtime._primitives;
+    const unesc = (s) => s.replace(/\\\\([\[\]])/g, '$1');
+    P[IR + 'setText'] = (a, u) => { const s = st(u.target); const t = String(a.TEXT); if (s.text !== t) { s.text = t; s.dirty = true; } s.on = true; };
+    P[IR + 'setBaseColor'] = (a, u) => { const s = st(u.target); const c = String(a.COLOR); if (s.color !== c) { s.color = c; s.dirty = true; } };
+    P[IR + 'setBaseSize'] = (a, u) => { const s = st(u.target); const z = Math.max(1, Number(a.SIZE)); if (s.size !== z) { s.size = z; s.dirty = true; } };
+    P[IR + 'setAlign'] = () => {};
+    P[IR + 'setMaxWidth'] = (a, u) => { const s = st(u.target); const w = Number(a.WIDTH); if (s.maxw !== w) { s.maxw = w; s.dirty = true; } };
+    P[IR + 'clearMaxDimensions'] = (a, u) => { const s = st(u.target); if (s.maxw !== null) { s.maxw = null; s.dirty = true; } };
+    P[IR + 'setLineHeight'] = (a, u) => { const s = st(u.target); const l = Number(a.HEIGHT); if (s.lh !== l) { s.lh = l; s.dirty = true; } };
+    P[IR + 'clearText'] = (a, u) => {
+      const t = u.target, s = st(t); s.on = false; s.text = ''; s.dirty = true;
+      const c = t.getCostumes()[t.currentCostume]; if (c && t.renderer) t.renderer.updateDrawableSkinId(t.drawableID, c.skinId);
+    };
+    P[IR + 'getExactTextWidth'] = (a, u) => st(u.target).w;
+    P[IR + 'getExactTextHeight'] = (a, u) => st(u.target).h;
+    P[IR + 'renderNow'] = (a, u) => {
+      const t = u.target, s = st(t);
+      if (!s.on || !s.dirty) return;
+      s.dirty = false;
+      let raw = s.text, bold = false;
+      if (raw.startsWith('[b]') && raw.endsWith('[/b]')) { bold = true; raw = raw.slice(3, -4); }
+      const text = unesc(raw);
+      const cv = document.createElement('canvas'); const ctx = cv.getContext('2d');
+      const font = `${bold ? '600 ' : '500 '}${s.size}px Inter, "Helvetica Neue", Arial, sans-serif`;
+      ctx.font = font;
+      const lines = [];
+      for (const para of text.split('\n')) {
+        if (!s.maxw) { lines.push(para); continue; }
+        let cur = '';
+        for (const word of para.split(/(?<=[ ])/)) {
+          if (ctx.measureText(cur + word).width > s.maxw && cur) { lines.push(cur); cur = word; } else cur += word;
+        }
+        lines.push(cur);
+      }
+      const lh = s.size * s.lh;
+      s.w = Math.max(1, Math.ceil(Math.max(...lines.map(l => ctx.measureText(l).width))));
+      s.h = Math.max(1, Math.ceil(lh * lines.length));
+      const RES = 2;
+      cv.width = s.w * RES; cv.height = s.h * RES;
+      const c2 = cv.getContext('2d'); c2.scale(RES, RES); c2.font = font; c2.fillStyle = s.color; c2.textBaseline = 'middle';
+      lines.forEach((l, i) => c2.fillText(l, 0, lh * (i + 0.5)));
+      if (t.renderer) {
+        const old = s.skin;
+        s.skin = t.renderer.createBitmapSkin(cv, RES, [s.w / 2, s.h / 2]);
+        t.renderer.updateDrawableSkinId(t.drawableID, s.skin);
+        if (old !== null) t.renderer.destroySkin(old);
+      }
+    };
+
     window.vm = vm; window.renderer = renderer;
     window.errors = [];
     return null;

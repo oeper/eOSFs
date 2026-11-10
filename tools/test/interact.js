@@ -137,7 +137,7 @@ const calcKey = k => k === '0' ? [228, 293.5] : k === '.' ? [366, 293.5] : k ===
   await h.shot(OUT + 'i_recents.png');
   const rec = await V('rec');
   console.log('rec list', JSON.stringify(rec));
-  await h.click(150, 170); await h.frames(14);   // first (most recent) card
+  await h.click(320, 170); await h.frames(14);   // centre (most recent) card
   expect('tapping card reopens app', await V('screen') === 3 && await V('app') === rec[rec.length - 1], await V('app'));
 
   // ---------- Clock: stopwatch & timer

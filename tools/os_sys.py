@@ -2,10 +2,12 @@ import math
 """eOS system UI: boot, lock, home, status/nav bars, keyboard, quick settings, dialogs, recents, main loop."""
 from sb3 import *
 from os_core import *
+from modes import MODE
 
 KB_H = 130
 
-for _n, _v in [('rscroll', 0), ('rs_on', 0), ('rs_x0', 0), ('rs_s0', 0), ('rc_dis_app', 0), ('rc_dis_t', 0), ('fsc', 1), ('last_t', 0), ('fclk', 0), ('last_save', 0), ('lk30', 0.3), ('lk35', 0.35), ('lk50', 0.5),
+for _n, _v in [('sw_off', 0), ('sw_focus', 0), ('rs_axis', 0), ('rs_vo', 0), ('rs_app', 0), ('rs_y0', 0), ('bs', 1), ('bx', 0), ('by', 0), ('nav_col', 0), ('nav_barw', 110), ('nav_barh', 5), ('nav_close', 74), ('nav_swipe', 1), ('nav_edge', 1),
+               ('nav_hold', 1), ('nav_tap', 0), ('cl_mode', 0), ('cl_dir', 1), ('launch_keep', 0), ('rscroll', 0), ('rs_on', 0), ('rs_x0', 0), ('rs_s0', 0), ('rc_dis_app', 0), ('rc_dis_t', 0), ('fsc', 1), ('last_t', 0), ('fclk', 0), ('last_save', 0), ('lk30', 0.3), ('lk35', 0.35), ('lk50', 0.5),
                ('op_x0', 0), ('op_y0', 0), ('op_w0', 62), ('op_h0', 62), ('op_p0', 0), ('cl_cw', 62), ('cl_ch', 62),
                ('cl_ccx', 0), ('cl_ccy', 0), ('cl_cp', 0), ('g_still', 0), ('g_rec', 0), ('g_px', 0), ('g_py', 0), ('cl_w0', W), ('cl_h0', H), ('cl_p0', 1), ('cur_w', W), ('cur_h', H), ('cur_p', 1), ('cl_on', 0), ('cl_app', 0), ('cl_t', 0), ('cl_full', 1), ('cl_s0', 1), ('cl_x0', W / 2), ('cl_y0', H / 2),
                ('cur_s', 1), ('cur_cx', W / 2), ('cur_cy', H / 2), ('navmode', 1), ('anim_n', 10), ('gmode', 0), ('gtype', 0), ('gt', 0), ('ga_s', 1), ('ga_cx', W / 2),
@@ -162,6 +164,9 @@ def draw_home():
 
 @proc('a ox oy')
 def launch(a, ox, oy):
+    # tapping the icon of the app that is already opening must not restart its animation
+    with If((V('screen') == SCR_APP) & (V('app') == a) & (V('open_t') < V('anim_n'))):
+        stop_this()
     S('view', 0)
     S('scroll', 0)
     S('kb_open', 0)
@@ -188,25 +193,39 @@ def launch(a, ox, oy):
             with If(V('cl_app') == a):
                 S('cl_on', 0)
             with Else():
-                S('cl_full', 0)
+                with If(V('cl_mode') == 0):
+                    S('cl_full', 0)
     S('open_t', 0)
     S('gmode', 0)
     with If(indexof(L('rec'), a) == 0):
         P.app_init(a)
     with Else():
-        list_delete(L('rec'), indexof(L('rec'), a))
         S('view', item(L('app_view'), a))
         S('scroll', item(L('app_scroll'), a))
-    list_add(L('rec'), a)
+        with If(V('launch_keep') == 0):
+            list_delete(L('rec'), indexof(L('rec'), a))
+    with If((V('launch_keep') == 0) | (indexof(L('rec'), a) == 0)):
+        list_add(L('rec'), a)
     S('screen', SCR_APP)
 
 
 @proc('s cx cy')
+def set_base(s_, cx, cy):
+    """window level: map the whole 640x360 UI onto a window of scale s_ centred on (cx, cy) - sets the base transform"""
+    S('bs', s_)
+    S('bx', cx - W / 2 * s_)
+    S('by', cy - H / 2 * s_)
+    S('gs', V('bs'))
+    S('gox', V('bx'))
+    S('goy', V('by'))
+
+
+@proc('s cx cy')
 def set_tf(s_, cx, cy):
-    """draw everything that follows scaled by s_ and centred on (cx, cy)"""
-    S('gs', s_)
-    S('gox', cx - W / 2 * s_)
-    S('goy', cy - H / 2 * s_)
+    """in-app effect (pop, slide...): scale s_ about a centre *inside the current window*; nests with set_base"""
+    S('gs', V('bs') * s_)
+    S('gox', V('bx') + (cx - W / 2 * s_) * V('bs'))
+    S('goy', V('by') + (cy - H / 2 * s_) * V('bs'))
 
 
 @proc('a w h cx cy p')
@@ -221,6 +240,7 @@ def start_close(a, w, h, cx, cy, p):
     S('cl_p0', p)
     S('cl_t', 0)
     S('cl_full', 1)
+    S('cl_mode', 0)
     S('cl_on', 1)
     S('kb_open', 0)
     S('qs_open', 0)
@@ -244,13 +264,13 @@ def draw_card(w, h, cx, cy, fa, ia, r):
     P.rrect(cx - w / 2, cy - h / 2, w, h, r, V('c_bg'))
     with If(fa > 0.03):
         S('gh', 100 - fa * 100)
-        P.set_tf(clamp(w / W, 0, h / H), cx, cy)          # fit the content inside the (morphing) window
+        P.set_base(clamp(w / W, 0, h / H), cx, cy)          # fit the content inside the (morphing) window
         S('clip0', SB)
         S('clip1', H - NB)
         P.app_draw()
         P.rect(0, 0, W, SB, V('c_bg'))
         P.rect(0, H - NB, W, NB, V('c_bg'))
-        P.set_tf(1, W / 2, H / 2)
+        P.set_base(1, W / 2, H / 2)
         S('gh', 0)
         S('cur_layer', 0)
     with If(ia > 0.03):
@@ -281,11 +301,65 @@ def draw_closing():
         S('cl_ccx', V('cl_x0') + (V('_cix') - V('cl_x0')) * V('_ce'))
         S('cl_ccy', V('cl_y0') + (V('_ciy') - V('cl_y0')) * V('_ce'))
         S('cl_cp', V('_cp'))
-        P.draw_card(V('cl_cw'), V('cl_ch'), V('cl_ccx'), V('cl_ccy'), V('_cfa'), V('_cia'),
-                    16 * (1 - V('_cp') * V('_cp') * V('_cp')))
+        with If(V('cl_mode') == 1):
+            # sideways app switch: the old window slides off, drawn from its own saved view state
+            S('cl_ccx', V('cl_x0') + (W / 2 + V('cl_dir') * W - V('cl_x0')) * V('_ce'))
+            S('cl_ccy', V('cl_y0') + (H / 2 - V('cl_y0')) * V('_ce'))
+            S('cl_cw', V('cl_w0') + (W - V('cl_w0')) * V('_ce'))
+            S('cl_ch', V('cl_h0') + (H - V('cl_h0')) * V('_ce'))
+            P.draw_thumb(V('cl_app'), V('cl_ccx'), V('cl_ccy'), V('cl_cw'), V('cl_ch'), 1)
+        with Else():
+            P.draw_card(V('cl_cw'), V('cl_ch'), V('cl_ccx'), V('cl_ccy'), V('_cfa'), V('_cia'),
+                        16 * (1 - V('_cp') * V('_cp') * V('_cp')))
         change(V('cl_t'), V('fsc'))
         with If(V('cl_t') > V('anim_n')):
             S('cl_on', 0)
+
+
+@proc('')
+def bar_tap():
+    """what a plain tap on the gesture bar does (Settings → Navigation)"""
+    with If(V('nav_tap') == 1):
+        S('qs_open', 0)
+        S('kb_open', 0)
+        S('screen', SCR_LOCK)
+        S('pin_show', 0)
+    with If(V('nav_tap') == 2):
+        P.nav_recents()
+    with If(V('nav_tap') == 3):
+        P.nav_home()
+
+
+@proc('dir')
+def swipe_switch(dir_):
+    """swipe the gesture bar sideways: dir_ +1 (right) = previous app, -1 (left) = next app; the current app slides out,
+    the other slides in (the recents list is not reordered, so repeated swipes walk through it)"""
+    S('_si', indexof(L('rec'), V('app')) - dir_)
+    with If((V('_si') >= 1) & (V('_si') <= listlen(L('rec')))):
+        S('_sa', item(L('rec'), V('_si')))
+        S('cl_app', V('app'))
+        S('cl_w0', V('ga_s') * W)
+        S('cl_h0', V('ga_s') * H)
+        S('cl_x0', V('ga_cx'))
+        S('cl_y0', V('ga_cy'))
+        S('cl_p0', 1)
+        S('cl_t', 0)
+        S('cl_full', 1)
+        S('cl_mode', 1)
+        S('cl_dir', dir_)
+        S('cl_on', 1)
+        S('gmode', 0)
+        S('launch_keep', 1)
+        P.launch(V('_sa'), 0, 0)
+        S('launch_keep', 0)
+        S('op_x0', V('cl_x0') - dir_ * W)
+        S('op_y0', H / 2)
+        S('op_w0', W)
+        S('op_h0', H)
+        S('op_p0', 1)
+    with Else():
+        S('gmode', 3)                       # nothing there: spring back
+        S('gt', 0)
 
 
 @proc('')
@@ -306,7 +380,7 @@ def gesture_update():
                 S('press', 0)
                 S('moved', 1)
             with Else():
-                with If((V('mx') < 14) | (V('mx') > W - 14)):
+                with If(((V('mx') < 14) | (V('mx') > W - 14)) & (V('nav_edge') == 1)):
                     S('gtype', 2)
                     S('press', 0)
                     S('moved', 1)
@@ -326,12 +400,16 @@ def gesture_update():
                 S('g_rec', 0)
             S('g_px', V('mx'))
             S('g_py', V('my'))
-            with If((V('g_still') >= 7) & (V('my') > H * 0.42) & (V('my') < H * 0.82)):
-                S('g_rec', 1)                      # held halfway: show the other open apps
+            with If((V('g_still') >= 7) & (V('nav_hold') == 1) & (V('my') > H * 0.42) &
+                    (V('my') < H * (V('nav_close') + 8) / 100)):
+                with If(V('g_rec') == 0):
+                    S('sw_focus', V('app'))
+                    S('sw_off', 0)
+                S('g_rec', 1)                      # held halfway: the app becomes the centre card of the app switcher
             with If(V('g_rec') == 1):
-                S('ga_s', V('ga_s') + (0.5 - V('ga_s')) * V('lk30'))
+                S('ga_s', V('ga_s') + (SW_W / W - V('ga_s')) * V('lk30'))
                 S('ga_cx', V('ga_cx') + (W / 2 - V('ga_cx')) * V('lk30'))
-                S('ga_cy', V('ga_cy') + (H / 2 - 14 - V('ga_cy')) * V('lk30'))
+                S('ga_cy', V('ga_cy') + (SW_Y + SW_H / 2 - V('ga_cy')) * V('lk30'))
             with Else():
                 S('_gd', clamp((H - V('my')) / H, 0, 1))
                 S('_gts', clamp(1 - V('_gd') * 0.95, 0.22, 1))
@@ -349,14 +427,19 @@ def gesture_update():
                         S('open_t', 99)
                         P.nav_recents()
                     with Else():
-                      with If(V('my') < H * 0.74):
+                      with If(V('my') < H * V('nav_close') / 100):
                         P.close_app_anim()
                       with Else():
-                        with If(V('ga_s') > 0.9):
-                            S('gmode', 0)
+                        with If((abs_(V('mx') - V('gx0')) > 60) & (V('ga_s') > 0.8) & (V('nav_swipe') == 1)):
+                            P.swipe_switch(1 - 2 * (V('mx') < V('gx0')))
                         with Else():
+                          with If(V('ga_s') > 0.9):
+                            S('gmode', 0)
+                          with Else():
                             S('gmode', 3)
                             S('gt', 0)
+                with If((V('gmode') == 0) & (abs_(V('mx') - V('gx0')) < 8) & (V('py') - V('my') < 8) & (V('nav_tap') != 0)):
+                    P.bar_tap()
                 with If((V('_gs') == SCR_HOME) & (V('py') - V('my') > 60)):
                     P.nav_recents()
                 with If((V('_gs') == SCR_REC) & (V('py') - V('my') > 60)):
@@ -385,6 +468,117 @@ def draw_thumb(a, cx, cy, w, h, fa):
     S('scroll', V('_ts'))
 
 
+SW_PITCH, SW_W, SW_H, SW_Y = 250, 230, 129, 104
+
+
+@proc('hold')
+def draw_switcher(hold):
+    """App switcher (Android/iOS style carousel of live app windows, current app in the centre, older ones to the left).
+    hold = 1: shown while the gesture bar is held halfway - the dragged app window itself is the centre card and the others
+    appear around it (no input here).  hold = 0: the Recents screen with the same layout (scroll, tap, swipe up to dismiss)."""
+    S('_swn', listlen(L('rec')))
+    S('_swk', indexof(L('rec'), V('sw_focus')))
+    with If(V('_swk') == 0):
+        S('_swk', V('_swn'))
+    S('_swmin', 0 - (V('_swk') - 1) * SW_PITCH)         # sw_off < 0 scrolls the carousel right = towards older apps
+    S('_swmax', (V('_swn') - V('_swk')) * SW_PITCH)
+    with If(hold == 0):
+        with If((V('press') == 1) & (V('my') > 60) & (V('my') < H - NB)):
+            S('rs_on', 1)
+            S('rs_x0', V('mx'))
+            S('rs_y0', V('my'))
+            S('rs_s0', V('sw_off'))
+            S('rs_axis', 0)
+            S('rs_app', 0)
+            S('_swp', V('_swk') + round_((V('mx') - W / 2 + V('sw_off')) / SW_PITCH))
+            with If((V('_swp') >= 1) & (V('_swp') <= V('_swn')) & (V('my') > SW_Y - 40) & (V('my') < SW_Y + SW_H) &
+                    (abs_(V('mx') - (W / 2 + (V('_swp') - V('_swk')) * SW_PITCH - V('sw_off'))) < SW_W / 2)):
+                S('rs_app', item(L('rec'), V('_swp')))
+        with If((V('rs_on') == 1) & (V('md') == 1) & (V('moved') == 1) & (V('rs_axis') == 0)):
+            with If((abs_(V('my') - V('rs_y0')) > abs_(V('mx') - V('rs_x0'))) & (V('my') < V('rs_y0')) & (V('rs_app') != 0)):
+                S('rs_axis', 2)                              # swipe a card up
+            with Else():
+                S('rs_axis', 1)                              # scroll the carousel
+        with If((V('rs_on') == 1) & (V('rs_axis') == 1) & (V('md') == 1)):
+            S('sw_off', V('rs_s0') - (V('mx') - V('rs_x0')))
+        with If((V('rs_on') == 1) & (V('rs_axis') == 2) & (V('md') == 1)):
+            S('rs_vo', clamp(V('my') - V('rs_y0'), -200, 0))
+        with If((V('md') == 0) & (V('rs_on') == 1)):
+            S('rs_on', 0)
+            with If((V('rs_axis') == 2) & (V('rs_vo') < -60) & (V('rc_dis_app') == 0)):
+                S('rc_dis_app', V('rs_app'))
+                S('rc_dis_t', 0)
+            S('rs_axis', 0)
+        with If(V('rs_on') == 0):
+            S('_swt', clamp(round_(V('sw_off') / SW_PITCH) * SW_PITCH, V('_swmin'), V('_swmax')))
+            S('sw_off', V('sw_off') + (V('_swt') - V('sw_off')) * V('lk35'))            # snap to the nearest card
+            S('rs_vo', V('rs_vo') * (1 - V('lk35')))
+        with If(V('rs_axis') == 1):
+            S('sw_off', clamp(V('sw_off'), V('_swmin') - 120, V('_swmax') + 120))
+    S('_swi', 0)
+    with repeat(V('_swn')):
+        inc('_swi')
+        S('cur_layer', 1)                    # drawing a thumbnail resets the input layer
+        S('_swA', item(L('rec'), V('_swi')))
+        S('_swX', W / 2 + (V('_swi') - V('_swk')) * SW_PITCH - V('sw_off'))
+        S('_swcy', SW_Y + SW_H / 2)
+        S('_swOff', 0)
+        S('_swFa', 1)
+        S('_swSc', 1)
+        with If(hold == 1):
+            P.ease((V('g_still') - 7) / 6)                   # neighbours grow in once the bar is held
+            S('_swFa', V('ez_o'))
+            S('_swSc', 0.85 + 0.15 * V('ez_o'))
+        with Else():
+            P.stag(abs_(V('_swi') - V('_swk')))
+            S('_swOff', V('stag_o'))
+            with If((V('rs_axis') == 2) & (V('rs_app') == V('_swA'))):
+                S('_swOff', V('_swOff') + V('rs_vo'))
+                S('_swFa', 1 - (0 - V('rs_vo')) / 260)
+        with If((V('rc_dis_app') == V('_swA')) | (V('rc_dis_app') == -1)):
+            P.ease((V('rc_dis_t') - (V('_swi') - 1) * 1.5 * (V('rc_dis_app') == -1)) / 8)
+            S('_swOff', V('_swOff') - V('ez_o') * 150)
+            S('_swFa', 1 - V('ez_o'))
+        with If((V('_swX') > -SW_W) & (V('_swX') < W + SW_W)):
+            S('_swx0', V('_swX') - SW_W / 2 * V('_swSc'))
+            S('_swy0', V('_swcy') - SW_H / 2 * V('_swSc') + V('_swOff'))
+            S('_swCl', 0)
+            S('_swT', 0)
+            with If(hold == 0):
+                P.tapr(V('_swX') + SW_W / 2 - 34, V('_swy0') - 40, 34, 32)
+                S('_swCl', V('tap_o'))
+                P.tapr(V('_swx0'), V('_swy0'), SW_W, SW_H)
+                S('_swT', V('tap_o'))
+            S('gh', 100 - V('_swFa') * 100)
+            P.appicon(item(L('app_icon'), V('_swA')), V('_swx0') + 14, V('_swy0') - 22, 24)
+            P.text(V('_swx0') + 34, V('_swy0') - 22, item(L('app_name'), V('_swA')), 13, 1, 0, 150)
+            with If(hold == 0):
+                P.icon('close', V('_swx0') + SW_W * V('_swSc') - 12, V('_swy0') - 22, 14, 0)
+            with If(~((hold == 1) & (V('_swA') == V('sw_focus')))):           # the held app is drawn by draw_app itself
+                P.draw_thumb(V('_swA'), V('_swX'), V('_swy0') + SW_H * V('_swSc') / 2, SW_W * V('_swSc'),
+                             SW_H * V('_swSc'), V('_swFa'))
+            S('gh', 0)
+            with If((V('_swCl') == 1) & (V('rc_dis_app') == 0)):
+                S('rc_dis_app', V('_swA'))
+                S('rc_dis_t', 0)
+                S('_swT', 0)
+            with If((V('_swT') == 1) & (V('rc_dis_app') == 0)):
+                P.launch(V('_swA'), V('_swX') - 31, V('_swy0') + SW_H / 2 - 31)
+                S('op_w0', SW_W)
+                S('op_h0', SW_H)
+                S('op_p0', 1)
+    with If(V('rc_dis_app') != 0):
+        change(V('rc_dis_t'), V('fsc'))
+        with If(V('rc_dis_t') > 8 + V('_swn') * 1.5):
+            with If(V('rc_dis_app') == -1):
+                list_clear(L('rec'))
+            with Else():
+                with If(indexof(L('rec'), V('rc_dis_app')) > 0):
+                    list_delete(L('rec'), indexof(L('rec'), V('rc_dis_app')))
+            S('rc_dis_app', 0)
+            S('sw_focus', 0)
+
+
 @proc('')
 def draw_recents():
     S('cur_layer', 1)
@@ -394,61 +588,7 @@ def draw_recents():
     S('_rcn', listlen(L('rec')))
     with If(V('_rcn') == 0):
         P.text_c(W / 2, 170, 'No recent apps', 16, 1, 0)
-    # horizontal drag scroll
-    with If((V('press') == 1) & (V('my') > 60) & (V('my') < H - NB)):
-        S('rs_on', 1)
-        S('rs_x0', V('mx'))
-        S('rs_s0', V('rscroll'))
-    with If(V('md') == 0):
-        S('rs_on', 0)
-    with If((V('rs_on') == 1) & (V('moved') == 1)):
-        S('rscroll', V('rs_s0') - (V('mx') - V('rs_x0')))
-    S('_rmax', V('_rcn') * 250 - 210)
-    S('rscroll', clamp(V('rscroll'), 0, (V('_rmax') + abs_(V('_rmax'))) / 2))
-    S('_rcI', V('_rcn') + 1)
-    S('_rcK', 0)
-    with repeat(V('_rcn')):
-        inc('_rcI', -1)
-        S('_rcApp', item(L('rec'), V('_rcI')))
-        S('_rcX', 40 - V('rscroll') + V('_rcK') * 250)
-        S('_rcY', 104)
-        P.stag(V('_rcK'))
-        S('_rcOff', V('stag_o'))
-        S('_rcFa', 1)
-        with If((V('rc_dis_app') == V('_rcApp')) | (V('rc_dis_app') == -1)):
-            P.ease((V('rc_dis_t') - (V('_rcK') * 1.5) * (V('rc_dis_app') == -1)) / 8)
-            S('_rcOff', 0 - V('ez_o') * 150)
-            S('_rcFa', 1 - V('ez_o'))
-        inc('_rcK')
-        with If((V('_rcX') > -240) & (V('_rcX') < W)):
-            P.tapr(V('_rcX') + 198, V('_rcY') - 36 + V('_rcOff'), 32, 30)
-            S('_rcCl', V('tap_o'))
-            P.tapr(V('_rcX'), V('_rcY') + V('_rcOff'), 230, 129)
-            S('_rcT', V('tap_o'))
-            S('gh', 100 - V('_rcFa') * 100)
-            P.appicon(item(L('app_icon'), V('_rcApp')), V('_rcX') + 14, V('_rcY') - 20 + V('_rcOff'), 22)
-            P.text(V('_rcX') + 32, V('_rcY') - 20 + V('_rcOff'), item(L('app_name'), V('_rcApp')), 13, 1, 0, 150)
-            P.icon('close', V('_rcX') + 214, V('_rcY') - 20 + V('_rcOff'), 14, 0)
-            P.draw_thumb(V('_rcApp'), V('_rcX') + 115, V('_rcY') + 64.5 + V('_rcOff'), 230, 129, V('_rcFa'))
-            S('gh', 0)
-            with If((V('_rcCl') == 1) & (V('rc_dis_app') == 0)):
-                S('rc_dis_app', V('_rcApp'))
-                S('rc_dis_t', 0)
-                S('_rcT', 0)
-            with If((V('_rcT') == 1) & (V('rc_dis_app') == 0)):
-                P.launch(V('_rcApp'), V('_rcX') + 115 - 31, V('_rcY') + 64.5 - 31)
-                S('op_w0', 230)
-                S('op_h0', 129)
-                S('op_p0', 1)
-    with If(V('rc_dis_app') != 0):
-        change(V('rc_dis_t'), V('fsc'))
-        with If(V('rc_dis_t') > 8 + V('_rcn') * 1.5):
-            with If(V('rc_dis_app') == -1):
-                list_clear(L('rec'))
-            with Else():
-                with If(indexof(L('rec'), V('rc_dis_app')) > 0):
-                    list_delete(L('rec'), indexof(L('rec'), V('rc_dis_app')))
-            S('rc_dis_app', 0)
+    P.draw_switcher(0)
     with If((V('_rcn') > 0) & (V('rc_dis_app') == 0)):
         P.btn(W / 2 - 60, 288, 120, 30, 'Close all', 0)
         with If(V('tap_o') == 1):
@@ -487,6 +627,22 @@ def statusbar(mode):
 
 
 @proc('mode')
+def nav_pcol(mode):
+    """colour of the gesture bar -> _pc (palette index); mode 0 = over wallpaper, 1 = over an app"""
+    S('_pc', pal('white'))                                   # nav_col 0 = automatic (contrast with the screen)
+    with If((mode == 1) & (V('dark') == 0)):
+        S('_pc', pal('black'))
+    with If(V('nav_col') == 1):
+        S('_pc', pal('white'))
+    with If(V('nav_col') == 2):
+        S('_pc', pal('black'))
+    with If(V('nav_col') == 3):
+        S('_pc', V('c_acc'))
+    with If(V('nav_col') == 4):
+        S('_pc', pal('gray'))
+
+
+@proc('mode')
 def navbar(mode):
     S('cur_layer', 1)
     S('_nv', V('tx'))
@@ -496,13 +652,11 @@ def navbar(mode):
         P.rect(0, H - NB, W, NB, V('c_bg'))
     S('_ny', H - NB / 2)
     with If(V('navmode') == 1):
-        S('_pc', pal('white'))
-        with If((mode == 1) & (V('dark') == 0)):
-            S('_pc', pal('black'))
-        S('_pw', 110)
+        P.nav_pcol(mode)
+        S('_pw', V('nav_barw'))
         with If(V('gtype') == 1):
-            S('_pw', 140)
-        P.rrect(W / 2 - V('_pw') / 2, H - 12, V('_pw'), 5, 2.5, V('_pc'))
+            S('_pw', V('nav_barw') * 1.25)
+        P.rrect(W / 2 - V('_pw') / 2, H - 7 - V('nav_barh'), V('_pw'), V('nav_barh'), V('nav_barh') / 2, V('_pc'))
     with Else():
         P.icon('back', W / 2 - 100, V('_ny'), 18, V('_nv'))
         P.icon('home', W / 2, V('_ny'), 18, V('_nv'))
@@ -533,6 +687,11 @@ def nav_home():
 
 @proc('')
 def nav_recents():
+    with If(V('screen') == SCR_APP):
+        S('sw_focus', V('app'))                       # the app you came from is the centre card
+    with Else():
+        S('sw_focus', 0)                              # otherwise the most recent one
+    S('sw_off', 0)
     S('kb_open', 0)
     S('qs_open', 0)
     with If(V('screen') == SCR_REC):
@@ -857,26 +1016,6 @@ def draw_toast():
 
 # ------------------------------------------------------------------ frame ---
 @proc('')
-def draw_switcher_preview():
-    """swipe-and-hold: the other open apps appear around the shrunken current app"""
-    S('gh', 55)
-    P.rect(0, 0, W, H, pal('black'))
-    S('gh', 0)
-    S('_sj', 0)
-    S('_sk', listlen(L('rec')) + 1)
-    with repeat(listlen(L('rec'))):
-        inc('_sk', -1)
-        S('_sa', item(L('rec'), V('_sk')))
-        with If((V('_sa') != V('app')) & (V('_sj') < 4)):
-            inc('_sj')
-            S('_sx', W / 2 + (255 + (floor((V('_sj') + 1) / 2) - 1) * 166) * (1 - (V('_sj') % 2) * 2))
-            P.rrect(V('_sx') - 75, H / 2 - 14 - 45, 150, 90, 14, V('c_surf'))
-            P.appicon(item(L('app_icon'), V('_sa')), V('_sx'), H / 2 - 14 - 8, 44)
-            P.text_c(V('_sx'), H / 2 - 14 + 30, item(L('app_name'), V('_sa')), 12, 1, V('tx'))
-    P.text_c(W / 2, H / 2 + 100, 'Release to open the app switcher', 12, 1, 0)
-
-
-@proc('')
 def draw_app():
     S('_tfm', 0)
     with If((V('open_t') < V('anim_n')) | (V('gmode') != 0)):
@@ -892,7 +1031,10 @@ def draw_app():
         P.draw_home()
         P.draw_closing()
         with If((V('gmode') == 1) & (V('g_rec') == 1)):
-            P.draw_switcher_preview()
+            S('gh', 45)
+            P.rect(0, 0, W, H, pal('black'))
+            S('gh', 0)
+            P.draw_switcher(1)
         with If(V('gmode') == 1):
             S('cur_s', V('ga_s'))
             S('cur_cx', V('ga_cx'))
@@ -924,7 +1066,7 @@ def draw_app():
         with If(V('_opening') == 0):
             S('cur_w', V('cur_s') * W)
             S('cur_h', V('cur_s') * H)
-            P.set_tf(V('cur_s'), V('cur_cx'), V('cur_cy'))
+            P.set_base(V('cur_s'), V('cur_cx'), V('cur_cy'))
     with If(V('_opening') == 0):
         S('clip0', SB)
         S('clip1', H - NB)
@@ -937,7 +1079,7 @@ def draw_app():
             # shrunken window: bars drawn in window space hide anything that overlaps them (no clipping exists)
             P.rect(0, 0, W, SB, V('c_bg'))
             P.rect(0, H - NB, W, NB, V('c_bg'))
-        P.set_tf(1, W / 2, H / 2)
+        P.set_base(1, W / 2, H / 2)
     S('cur_layer', 0)
     list_replace(L('app_view'), V('app'), V('view'))
     list_replace(L('app_scroll'), V('app'), V('scroll'))
@@ -954,12 +1096,20 @@ def frame():
     S('lk35', 1 - mathop('e ^', V('fsc') * math.log(0.65)))
     S('lk50', 1 - mathop('e ^', V('fsc') * math.log(0.5)))
     P.input_()
-    P.set_tf(1, W / 2, H / 2)
+    P.set_base(1, W / 2, H / 2)
     P.gesture_update()
     P.time_update()
     P.bg_tasks()
     inc('frame_n')
-    pen_clear()
+    if MODE == 'sprite':
+        for _n in CM_LISTS:                      # new command buffer for this frame
+            list_clear(L(_n))
+        S('cm_n', 0)
+        with If(V('pen_dirty') == 1):          # only Paint draws with the pen; clearing it requests a redraw (ends the VM step)
+            pen_clear()
+            S('pen_dirty', 0)
+    else:
+        pen_clear()
     S('gh', 0)
     effect('GHOST', 0)
     # which layer owns input this frame
@@ -1024,10 +1174,13 @@ def frame():
         P.rect(0, 0, W, H, pal('black'))
         S('gh', 0)
     effect('GHOST', 0)
+    if MODE == 'sprite':
+        broadcast('render')                      # the Element clones draw this frame's buffer right after this script yields
 
 
 V('_sm', 0)
 V('ui_sig', 0)
+V('pen_dirty', 0)
 V('pg_sig', 0)
 V('_psig', 0)
 V('_sig', 0)
@@ -1039,6 +1192,8 @@ def make_main_script():
         hide()
         stage_size(W, H)
         rotation_all()
+        if MODE == 'sprite':
+            broadcast_wait('init_pool')           # Element creates its clone pool, then z-orders it
         S('screen', SCR_BOOT)
         S('boot_t', 0)
         S('md', 0)

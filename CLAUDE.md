@@ -1,6 +1,12 @@
 # eOS – a small operating system for PenguinMod
 
-`eOS.pmp` (repo root) is the shippable project: open it in PenguinMod and press the green flag.
+Two editions are built from the same source (`EOS_MODE` in `tools/modes.py`):
+* `eOS.pmp` – **pen edition**: one hidden sprite, everything stamped with the pen (no text extension needed).
+* `eOS-sprites.pmp` – **sprite edition** (what the user asked for): every app is its own sprite, every UI element is a clone of the `Element`
+  sprite, text is rendered by the **Iris Text** extension (`g1nxIrisText`, https://extensions.penguinmod.com/extensions/Gen1x/iris-text.js).
+  See "Sprite edition" below. Both pass all suites (`tools/test/run_all.sh`).
+
+`eOS.pmp` (repo root) is the shippable pen project: open it in PenguinMod and press the green flag.
 It is **generated** – never edit the .pmp by hand. Edit the Python in `tools/` and rebuild.
 
 ```
@@ -30,6 +36,27 @@ settings + FS only (not Paint/terminal history).
 | `os_store.py` | save/load to localStorage. |
 | `build_os.py`, `lint_pmp.py` | entry points. `test/` = headless Scratch VM + WebGL harness and suites. |
 
+## Sprite edition (tools/build_sprites.py, sp_prims.py, sp_element.py, sp_assets.py)
+* Shared OS code (`os_core/os_sys/os_apps/os_store`) lives in unit `lib` and is copied *pruned* (only procedures actually called) into every
+  sprite; `app_unit('Name')` in os_apps puts an app's procedures into its own sprite, reached by broadcasts (`draw_N`, `init_N`, `term_run`).
+  Cross-sprite state is global variables/lists only. Local ("this sprite only") variables: `VL()`.
+* Drawing primitives (`sp_prims.py`) append **commands** to the `cm_*` lists (final stage geometry + look); at the end of `frame` the `render`
+  broadcast lets pool clone *i* draw command *i* (slot order = z-order). Kinds: 1 rect 2 circle 3 rounded rect 4 icon 5 app icon 6 pill key
+  7 text 8 rotated line. Colours = costume family (white / accent) + brightness + hue effects from `pal_*` lists. Rounded rects pick one of
+  8 aspect × 4 radius pre-made costumes and stretch it. Pool size 270 (< 300 clone limit).
+* Text: Iris renders the string onto the clone (`[`,`]` are escaped; bold = `[b]..[/b]`). `Measure` sprite gives text sizes (`P.tw`, `P.para` measure).
+  Setters are cheap when unchanged, so the clone just re-applies them every frame.
+* **Never `broadcast and wait` inside a warp ("run without screen refresh") procedure** – it busy-waits ~500 ms. The sprite build compiles all
+  procedures non-warp (`sb3.DEFAULT_WARP`); pen loops with no broadcasts (`paint_draw`) are explicitly warp. Avoid `pen_clear` each frame
+  (it requests a redraw and ends the VM step): only Paint uses the pen (`pen_dirty`).
+* Known gaps: editor caret position (Iris can't tell us the end of the text), Paint canvas lives on the pen layer (so it isn't visible in
+  thumbnails), the tests use a stand-in for Iris (`harness.js`) – the real extension is unverified. Fonts differ from the pen edition.
+
+## App switcher (os_sys.py `draw_switcher`)
+One layout for hold-halfway and the Recents screen: carousel of live windows (`SW_*` constants), current app centred, older apps left,
+`sw_focus`/`sw_off` = focused app and scroll offset (snaps to cards); drag sideways to scroll, tap to open, swipe a card up to dismiss.
+While the bar is held the dragged window eases into the centre slot (`ga_*`), neighbours fade in; releasing shows the same layout.
+
 ## Navigation / animations (os_sys.py)
 * **Global draw transform** `gs, gox, goy` is applied inside every primitive (`rect/circle/text/para/icon/appicon/pillkey/hand` and Paint's replay);
   `P.set_tf(scale, cx, cy)` draws the next things scaled around a centre. Reset to identity at the start of `frame` and after `draw_app`.
@@ -56,6 +83,9 @@ settings + FS only (not Paint/terminal history).
   `qs_t` (quick-settings drop), `dlg_t` (dialog pop), `cb_t` (calculator display pulse), `pt_pop` (Paint colour), `sn_pop` (Snake game-over).
   Switch knobs glide via list `sw_pos` (each `P.switch` call needs a unique id 1-8); Clock tab underline glides via `tab_x`; the second hand
   sweeps using `ssf`. Speeds scale with `anim_n` where noted. Reuse these when adding animations; apply them with `P.set_tf`.
+* Navigation settings (Settings → Customise navigation): `nav_col nav_barw nav_barh nav_close nav_swipe nav_edge nav_hold nav_tap`; sideways swipe on the bar
+  = previous/next app (`swipe_switch`, slide on the closing layer, recents order untouched via `launch_keep`).
+* Transforms nest: windows call `set_base` (absolute), in-app effects call `set_tf` (relative to the window).
 * Customisable state (saved by `os_store.py`, fields in order): dark, accent, wall, bright, wifi, bt, h24, pin, sn_best, navmode, anim_n.
   Layout constants (`W H SB NB`, sizes in code) are still hard-coded – see "Ideas".
 
