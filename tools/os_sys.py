@@ -14,7 +14,10 @@ for _n, _v in [('navmode', 1), ('anim_n', 10), ('gmode', 0), ('gtype', 0), ('gt'
 @proc('')
 def draw_boot():
     P.rect(0, 0, W, H, pal('black'))
-    P.text_c(W / 2, 150, 'eOS', 64, 1, 0)
+    P.ease(V('boot_t') / 20)
+    S('gh', 100 - V('ez_o') * 100)
+    P.text_c(W / 2, 150, 'eOS', 56 + 8 * V('ez_o'), 1, 0)
+    S('gh', 0)
     P.text_c(W / 2, 196, 'PenguinMod edition', 12, 0, -45)
     P.rrect(W / 2 - 80, 250, 160, 6, 3, pal('dgray'))
     P.rrect(W / 2 - 80, 250, 160 * V('boot_t') / 70, 6, 3, pal('white'))
@@ -260,7 +263,8 @@ def draw_recents():
         inc('_ri', -1)
         S('_rapp', item(L('rec'), V('_ri')))
         S('_rx', 50 + (V('_rk') % 2) * 280)
-        S('_ry', 76 + floor(V('_rk') / 2) * 58)
+        P.stag(V('_rk'))
+        S('_ry', 76 + floor(V('_rk') / 2) * 58 + V('stag_o'))
         inc('_rk')
         # close button first (sits on top of the card)
         P.tapr(V('_rx') + 214, V('_ry') + 8, 32, 32)
@@ -403,6 +407,8 @@ def kb_begin(prompt, init, act, multi, maxlen):
     S('ti_act', act)
     S('ti_multi', multi)
     S('kb_max', maxlen)
+    with If(V('kb_open') == 0):
+        S('kb_t', 0)
     S('kb_open', 1)
     S('kb_done', 0)
     S('kb_page', 0)
@@ -468,8 +474,11 @@ def kb_fn(x, y, w, h, label, ic):
 @proc('')
 def draw_keyboard():
     S('cur_layer', 1)
+    inc('kb_t')
+    P.ease(V('kb_t') / 6)
     S('kb_top', H - NB - KB_H)
     S('_ky', V('kb_top'))
+    P.set_tf(1, W / 2, H / 2 + (1 - V('ez_o')) * 60)
     P.rect(0, V('kb_top'), W, KB_H, V('c_surf2'))
     P.rect(0, V('kb_top'), W, 1, V('c_div'))
     S('_p', V('kb_page'))
@@ -529,6 +538,7 @@ def draw_keyboard():
         with Else():
             S('kb_done', 1)
     P.kb_physical()
+    P.set_tf(1, W / 2, H / 2)
 
 
 @proc('')
@@ -560,12 +570,15 @@ V('pk_held', '')
 @proc('')
 def draw_qs():
     S('cur_layer', 1)
-    S('gh', 50)
+    inc('qs_t')
+    P.ease(V('qs_t') / 7)
+    S('gh', 100 - 50 * V('ez_o'))
     P.rect(0, 0, W, H, pal('black'))
     S('gh', 0)
     P.tapr(0, 176, W, H - 176)
     with If(V('tap_o') == 1):
         S('qs_open', 0)
+    P.set_tf(1, W / 2, H / 2 - (1 - V('ez_o')) * 170)
     P.rrect(20, SB + 2, W - 40, 150, 18, V('c_surf'))
     S('_qi', 0)
     with repeat(4):
@@ -616,6 +629,7 @@ def draw_qs():
     P.icon('sun', 52, SB + 108, 18, V('tx2'))
     P.slider(90, 76, SB + 108, W - 150, V('bright'))
     S('bright', clamp(V('sl_o'), 15, 100))
+    P.set_tf(1, W / 2, H / 2)
 
 
 # ----------------------------------------------------------------- dialog --
@@ -625,6 +639,9 @@ def draw_dialog():
     S('gh', 40)
     P.rect(0, 0, W, H, pal('black'))
     S('gh', 0)
+    inc('dlg_t')
+    P.ease(V('dlg_t') / 6)
+    P.set_tf(0.8 + 0.2 * V('ez_o'), W / 2, H / 2)
     P.rrect(W / 2 - 150, 100, 300, 150, 18, V('c_surf'))
     P.text(W / 2 - 128, 126, V('dlg_title'), 16, 1, V('tx'), 256)
     P.para(W / 2 - 128, 156, 256, V('dlg_msg'), 13, 18, V('tx2'), 1)
@@ -635,6 +652,7 @@ def draw_dialog():
     with If(V('tap_o') == 1):
         S('dlg', 0)
         P.dlg_run()
+    P.set_tf(1, W / 2, H / 2)
 
 
 @proc('title msg ok act arg')
@@ -645,6 +663,7 @@ def ask(title, msg, ok, act, arg):
     S('dlg_act', act)
     S('dlg_arg', arg)
     S('dlg', 1)
+    S('dlg_t', 0)
     S('kb_open', 0)
 
 
@@ -656,8 +675,11 @@ def draw_toast():
         S('gh', 0)
         with If(V('toast_t') < 14):
             S('gh', 100 - V('toast_t') * 100 / 14)
+        P.ease((100 - V('toast_t')) / 8)
+        P.set_tf(1, W / 2, H / 2 - (1 - V('ez_o')) * 34)
         P.rrect(W / 2 - V('tw_o') / 2 - 16, SB + 8, V('tw_o') + 32, 30, 15, pal('black'))
         P.text_c(W / 2, SB + 23, V('toast'), 13, 1, 0)
+        P.set_tf(1, W / 2, H / 2)
         S('gh', 0)
 
 
@@ -704,6 +726,9 @@ def draw_app():
     S('clip0', SB)
     S('clip1', H - NB)
     P.rrect(0, 0, W, H, (1 - V('gs')) * 60, V('c_bg'))
+    with If(V('_tfm') == 0):
+        P.ease(V('pg_t') / V('anim_n'))                       # page transition: slide in from the right
+        P.set_tf(1, W / 2 + (1 - V('ez_o')) * 36, H / 2)
     P.app_draw()
     P.set_tf(1, W / 2, H / 2)
     S('cur_layer', 0)
@@ -759,6 +784,14 @@ def frame():
     with If(V('dlg') == 1):
         P.draw_dialog()
     P.draw_toast()
+    S('_psig', V('screen') * 10000000 + V('app') * 1000000 + V('view') * 100000 + V('clk_tab') * 10000 + V('f_dir'))
+    with If(V('_psig') != V('pg_sig')):
+        S('pg_sig', V('_psig'))
+        S('pg_t', 0)
+    with If(V('pg_t') < 99):
+        inc('pg_t')
+    with If(V('qs_open') == 0):
+        S('qs_t', 0)
     # a press that caused a screen/view change must not activate widgets of the new screen on release
     S('_sig', V('screen') * 100000 + V('app') * 1000 + V('view') * 100 + V('qs_open') * 10 + V('dlg') * 3 +
       V('kb_open'))
@@ -777,6 +810,8 @@ def frame():
 
 V('_sm', 0)
 V('ui_sig', 0)
+V('pg_sig', 0)
+V('_psig', 0)
 V('_sig', 0)
 
 

@@ -50,7 +50,8 @@ APP_FILES, APP_NOTES, APP_CALC, APP_CLOCK, APP_TERM, APP_PAINT, APP_SNAKE, APP_S
 for _n, _v in [
     ('screen', 0), ('app', 0), ('view', 0), ('frame_n', 0),
     ('mx', 0), ('my', 0), ('md', 0), ('mdp', 0), ('press', 0), ('rel', 0), ('px', 0), ('py', 0), ('moved', 0),
-    ('gs', 1), ('gox', 0), ('goy', 0), ('cur_layer', 0), ('act_layer', 0), ('clip0', SB), ('clip1', H - NB), ('gh', 0),
+    ('pg_t', 99), ('kb_t', 99), ('qs_t', 99), ('dlg_t', 99), ('cb_t', 99), ('pt_pop', 99), ('sn_pop', 99),
+    ('ez_o', 1), ('stag_o', 0), ('tab_x', 0), ('ss_prev', -1), ('ss_t0', 0), ('ssf', 0), ('gs', 1), ('gox', 0), ('goy', 0), ('cur_layer', 0), ('act_layer', 0), ('clip0', SB), ('clip1', H - NB), ('gh', 0),
     ('hit_o', 0), ('tap_o', 0), ('tw_o', 0), ('sl_o', 0), ('drag_id', 0),
     ('scroll', 0), ('sc_on', 0), ('sc_y0', 0), ('sc_s0', 0),
     # settings (persist inside the project)
@@ -65,6 +66,7 @@ for _n, _v in [
 ]:
     V(_n, _v)
 
+L('sw_pos', [0] * 8)
 L('gw')          # glyph widths indexed by costume number (filled in by build)
 L('rec')         # recent apps (most recent last)
 L('app_name', APPS)
@@ -72,6 +74,20 @@ L('app_icon', APP_ICON)
 L('dow', ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'])
 L('mon', ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
           'October', 'November', 'December'])
+
+
+@proc('t')
+def ease(t):
+    """ease-out quad of t (clamped 0..1) -> ez_o"""
+    S('_et0', clamp(t, 0, 1))
+    S('ez_o', 1 - (1 - V('_et0')) * (1 - V('_et0')))
+
+
+@proc('k')
+def stag(k):
+    """entrance offset (px, 26 -> 0) for list item k, driven by pg_t -> stag_o"""
+    P.ease((V('pg_t') - k * 2) / (V('anim_n') * 0.8))
+    S('stag_o', (1 - V('ez_o')) * 26)
 
 
 # ------------------------------------------------------------ primitives ---
@@ -333,28 +349,29 @@ def btn(x, y, w, h, label, style):
     with If(style == 2):
         S('_bc', pal('red'))
         S('_btx', 0)
+    S('_bi', 0)
     with If((V('hit_o') == 1) & (V('md') == 1) & (V('moved') == 0)):
+        S('_bi', 2)
         with If(style == 0):
             S('_bc', V('c_div'))
-        with Else():
-            S('gh', 25)
-    P.rrect(x, y, w, h, 9, V('_bc'))
-    S('gh', 0)
-    P.text_c(x + w / 2, y + h / 2, label, 13, 1, V('_btx'))
+    P.rrect(x + V('_bi'), y + V('_bi'), w - V('_bi') * 2, h - V('_bi') * 2, 9, V('_bc'))
+    P.text_c(x + w / 2, y + h / 2, label, 13 - V('_bi') * 0.25, 1, V('_btx'))
     S('tap_o', V('_bt'))
 
 
-@proc('x y on')
-def switch(x, y, on):
-    """44x24 toggle; call, then read tap_o and flip the variable yourself"""
+@proc('id x y on')
+def switch(id_, x, y, on):
+    """44x24 toggle with a sliding knob; call, then read tap_o and flip the variable yourself"""
     P.tapr(x - 4, y - 6, 52, 36)
     S('_st', V('tap_o'))
-    with If(on == 1):
+    S('_sp', item(L('sw_pos'), id_))
+    S('_sp', V('_sp') + (on - V('_sp')) * 0.35)
+    list_replace(L('sw_pos'), id_, V('_sp'))
+    with If(V('_sp') > 0.5):
         P.rrect(x, y, 44, 24, 12, V('c_acc'))
-        P.circle(x + 32, y + 12, 18, pal('white'))
     with Else():
         P.rrect(x, y, 44, 24, 12, V('c_div'))
-        P.circle(x + 12, y + 12, 18, pal('white'))
+    P.circle(x + 12 + 20 * V('_sp'), y + 12, 18 + 2 * sin(V('_sp') * 180), pal('white'))
     S('tap_o', V('_st'))
 
 
@@ -409,6 +426,10 @@ def time_update():
     S('hh', current('HOUR'))
     S('mm', current('MINUTE'))
     S('ss', current('SECOND'))
+    with If(V('ss') != V('ss_prev')):
+        S('ss_prev', V('ss'))
+        S('ss_t0', timer())
+    S('ssf', V('ss') + clamp(timer() - V('ss_t0'), 0, 1))
     S('_h', V('hh'))
     S('ampm', '')
     with If(V('h24') == 0):

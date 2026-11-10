@@ -438,6 +438,7 @@ def app_files():
         with If(V('_fc') == 0):
             P.text_c(W / 2, 170, 'This folder is empty', 14, 0, V('tx2'))
         S('_fp', 0)
+        S('_rowi', 0)
         S('_fy', SB + 44 - V('scroll'))
         with repeat(2):
             inc('_fp')
@@ -446,7 +447,9 @@ def app_files():
                 inc('_fk')
                 with If((item(L('fs_parent'), V('_fk')) == V('f_dir')) &
                         (item(L('fs_type'), V('_fk')) == 2 - V('_fp'))):
-                    P.file_row(V('_fk'), V('_fy'))
+                    P.stag(V('_rowi'))
+                    P.file_row(V('_fk'), V('_fy') + V('stag_o'))
+                    inc('_rowi')
                     change(V('_fy'), 46)
         P.fs_path(V('f_dir'))
         P.header(V('fs_p'))
@@ -473,12 +476,17 @@ def app_notes():
         with If(V('_fc') == 0):
             P.text_c(W / 2, 170, 'No notes yet - tap New note', 14, 0, V('tx2'))
         S('_fy', SB + 46 - V('scroll'))
+        S('_rowi', 0)
         S('_fk', 0)
         with repeat(listlen(L('fs_id'))):
             inc('_fk')
             with If((item(L('fs_parent'), V('_fk')) == 3) & (item(L('fs_type'), V('_fk')) == 0)):
                 S('_nid', item(L('fs_id'), V('_fk')))
                 S('_nk', V('_fk'))
+                P.stag(V('_rowi'))
+                inc('_rowi')
+                S('_fy0', V('_fy'))
+                change(V('_fy'), V('stag_o'))
                 P.tapr(W - 54, V('_fy') + 8, 40, 40)
                 S('_ndel', V('tap_o'))
                 P.tapr(14, V('_fy'), W - 28, 56)
@@ -499,7 +507,7 @@ def app_notes():
                     S('ed_file', V('_nid'))
                     S('view', 1)
                     S('kb_open', 0)
-                change(V('_fy'), 62)
+                S('_fy', V('_fy0') + 62)
         P.header('Notes')
         P.btn(W - 112, SB + 5, 96, 26, 'New note', 1)
         with If(V('tap_o') == 1):
@@ -545,6 +553,7 @@ def calc_eval():
 
 @proc('k')
 def calc_key(k):
+    S('cb_t', 0)
     with If(V('calc_d') == 'Error'):
         P.calc_reset()
     with If(k == 'C'):
@@ -594,11 +603,13 @@ def app_calc():
     S('_cx0', W / 2 - 180)
     P.rrect(V('_cx0'), SB + 42, 360, 60, 14, V('c_surf'))
     P.text_r(V('_cx0') + 344, SB + 56, V('calc_h'), 12, 0, V('tx2'))
-    S('_cs', 38)
+    inc('cb_t')
+    P.ease(V('cb_t') / 7)
+    S('_cs', 38 * (1 + 0.12 * (1 - V('ez_o'))))
     with If(length(V('calc_d')) > 9):
-        S('_cs', 30)
+        S('_cs', 30 * (1 + 0.12 * (1 - V('ez_o'))))
     with If(length(V('calc_d')) > 12):
-        S('_cs', 24)
+        S('_cs', 24 * (1 + 0.12 * (1 - V('ez_o'))))
     P.text_r(V('_cx0') + 344, SB + 84, V('calc_d'), V('_cs'), 1, V('tx'))
     S('_ck', 0)
     S('_cy', SB + 122)
@@ -666,9 +677,11 @@ def app_clock():
             S('clk_tab', V('_tb'))
         with If(V('clk_tab') == V('_tb')):
             P.text_c(V('_tx0') + 70, SB + 54, item(L('clk_tabs'), V('_tb')), 14, 1, V('tx'))
-            P.rrect(V('_tx0') + 30, SB + 68, 80, 3, 1.5, V('c_acc'))
+            S('_tabt', V('_tx0') + 30)
         with Else():
             P.text_c(V('_tx0') + 70, SB + 54, item(L('clk_tabs'), V('_tb')), 14, 0, V('tx2'))
+    S('tab_x', V('tab_x') + (V('_tabt') - V('tab_x')) * 0.3)
+    P.rrect(V('tab_x'), SB + 68, 80, 3, 1.5, V('c_acc'))
     with If(V('clk_tab') == 1):
         P.clock_face(W / 2 - 150, 214, 102)
         P.text(W / 2 + 10, 150, V('tstr'), 48, 1, V('tx'), 0)
@@ -769,7 +782,7 @@ def clock_face(cx, cy, r):
     S('_ca', (V('mm') + V('ss') / 60) * 6)
     P.hand(cx, cy, cx + sin(V('_ca')) * r * 0.74, cy - cos(V('_ca')) * r * 0.74, 4,
            item(L('acc_hex'), V('accent') + 1))
-    S('_ca', V('ss') * 6)
+    S('_ca', V('ssf') * 6)
     P.hand(cx - sin(V('_ca')) * r * 0.12, cy + cos(V('_ca')) * r * 0.12, cx + sin(V('_ca')) * r * 0.86,
            cy - cos(V('_ca')) * r * 0.86, 2, '#EF4444')
     P.circle(cx, cy, 10, pal('red'))
@@ -1137,6 +1150,8 @@ def app_paint():
     # toolbar
     P.rect(0, SB + 37, 72, H - SB - 37, V('c_surf'))
     P.rect(72, SB + 37, 1, H, V('c_div'))
+    inc('pt_pop')
+    P.ease(V('pt_pop') / 8)
     S('_pk', 0)
     with repeat(10):
         inc('_pk')
@@ -1145,8 +1160,9 @@ def app_paint():
         P.tapr(V('_px2') - 13, V('_py2') - 13, 26, 26)
         with If(V('tap_o') == 1):
             S('pt_c', V('_pk'))
+            S('pt_pop', 0)
         with If(V('pt_c') == V('_pk')):
-            P.circle(V('_px2'), V('_py2'), 26, V('c_acc'))
+            P.circle(V('_px2'), V('_py2'), 26 + 8 * (1 - V('ez_o')), V('c_acc'))
         P.circle(V('_px2'), V('_py2'), 20, V('c_div'))
         P.circle(V('_px2'), V('_py2'), 18, item(L('paint_pal'), V('_pk')))
     # brush sizes
@@ -1237,6 +1253,7 @@ def snake_step():
             S('_dead', 1)
     with If(V('_dead') == 1):
         S('sn_state', 2)
+        S('sn_pop', 0)
         with If(V('sn_score') > V('sn_best')):
             S('sn_best', V('sn_score'))
     with Else():
@@ -1287,7 +1304,7 @@ def app_snake():
     # board
     P.rrect(SN_X0 - 3, SN_Y0 - 3, SN_COLS * SN_C + 6, SN_ROWS * SN_C + 6, 10, V('c_div'))
     P.rrect(SN_X0, SN_Y0, SN_COLS * SN_C, SN_ROWS * SN_C, 7, V('c_surf'))
-    P.circle(SN_X0 + V('sn_fx') * SN_C + SN_C / 2, SN_Y0 + V('sn_fy') * SN_C + SN_C / 2, SN_C - 4, pal('red'))
+    P.circle(SN_X0 + V('sn_fx') * SN_C + SN_C / 2, SN_Y0 + V('sn_fy') * SN_C + SN_C / 2, SN_C - 5 + 3 * sin(V('frame_n') * 14), pal('red'))
     S('_k', 0)
     with repeat(listlen(L('sn_x'))):
         inc('_k')
@@ -1314,9 +1331,13 @@ def app_snake():
         P.rrect(SN_X0 + 76, SN_Y0 + 208, 280, 32, 16, pal('black'))
         P.text_c(SN_X0 + 216, SN_Y0 + 224, 'Swipe or press an arrow to start', 12, 1, 0)
     with If(V('sn_state') == 2):
+        inc('sn_pop')
+        P.ease(V('sn_pop') / 8)
+        P.set_tf(0.6 + 0.4 * V('ez_o'), SN_X0 + 216, SN_Y0 + 126)
         P.rrect(SN_X0 + 76, SN_Y0 + 78, 280, 96, 16, pal('black'))
         P.text_c(SN_X0 + 216, SN_Y0 + 104, join('Game over - score ', V('sn_score')), 15, 1, 0)
         P.btn(SN_X0 + 156, SN_Y0 + 126, 120, 32, 'Play again', 1)
+        P.set_tf(1, W / 2, H / 2)
         with If(V('tap_o') == 1):
             P.snake_reset()
 
@@ -1344,7 +1365,7 @@ def app_settings():
         # --- Display
         P.set_sec('DISPLAY', V('_y'))
         P.set_row('Dark mode', V('_y') + 22)
-        P.switch(W - 74, V('_y') + 32, V('dark'))
+        P.switch(1, W - 74, V('_y') + 32, V('dark'))
         with If(V('tap_o') == 1):
             S('dark', 1 - V('dark'))
             P.theme()
@@ -1383,15 +1404,15 @@ def app_settings():
         # --- General
         P.set_sec('GENERAL', V('_y') + 246)
         P.set_row('24-hour clock', V('_y') + 268)
-        P.switch(W - 74, V('_y') + 278, V('h24'))
+        P.switch(2, W - 74, V('_y') + 278, V('h24'))
         with If(V('tap_o') == 1):
             S('h24', 1 - V('h24'))
         P.set_row('Wi-Fi', V('_y') + 318)
-        P.switch(W - 74, V('_y') + 328, V('wifi'))
+        P.switch(3, W - 74, V('_y') + 328, V('wifi'))
         with If(V('tap_o') == 1):
             S('wifi', 1 - V('wifi'))
         P.set_row('Bluetooth', V('_y') + 368)
-        P.switch(W - 74, V('_y') + 378, V('bt'))
+        P.switch(4, W - 74, V('_y') + 378, V('bt'))
         with If(V('tap_o') == 1):
             S('bt', 1 - V('bt'))
         # --- Navigation

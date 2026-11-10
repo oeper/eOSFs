@@ -40,6 +40,11 @@ settings + FS only (not Paint/terminal history).
   side edge = `gtype 2` edge-swipe back. Back/Home buttons and `nav_back` also use `close_app_anim`.
 * Opening an app (`launch`) animates from the icon (or recents card) for `anim_n` frames (Settings: Fast 6 / Normal 10 / Slow 16).
   While any transform animation runs `act_layer` is 3, so no widget reacts.
+* **In-app animation helpers** (os_core.py): `P.ease(t)` → `ez_o`; `P.stag(k)` → `stag_o` (list-row entrance offset). Counters that restart on a
+  change and are advanced per frame: `pg_t` (page slide-in/row stagger; reset when screen/app/view/folder/clock tab changes), `kb_t` (keyboard rise),
+  `qs_t` (quick-settings drop), `dlg_t` (dialog pop), `cb_t` (calculator display pulse), `pt_pop` (Paint colour), `sn_pop` (Snake game-over).
+  Switch knobs glide via list `sw_pos` (each `P.switch` call needs a unique id 1-8); Clock tab underline glides via `tab_x`; the second hand
+  sweeps using `ssf`. Speeds scale with `anim_n` where noted. Reuse these when adding animations; apply them with `P.set_tf`.
 * Customisable state (saved by `os_store.py`, fields in order): dark, accent, wall, bright, wifi, bt, h24, pin, sn_best, navmode, anim_n.
   Layout constants (`W H SB NB`, sizes in code) are still hard-coded – see "Ideas".
 
