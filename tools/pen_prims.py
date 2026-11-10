@@ -1,10 +1,10 @@
-L('pal_hex', ['#' + h for _, h in assets.PAL])
+V('fade', 0)
 # Pen (stamp) drawing primitives - exec'd into os_core's namespace in pen mode.
 @proc('x y w h c')
 def rect(x, y, w, h, c):
     with If((w > 0) & (h > 0) & vis(y, y + h)):
         costume(c + 0)
-        effect('GHOST', V('gh'))
+        effect('GHOST', V('gh') + (100 - V('gh')) * V('fade') / 100)
         set_stretch(w * V('gs'), h * V('gs'))
         goto(V('gox') + (x + w / 2) * V('gs') - 320, 180 - V('goy') - (y + h / 2) * V('gs'))
         stamp()
@@ -14,7 +14,7 @@ def rect(x, y, w, h, c):
 def circle(cx, cy, d, c):
     with If((d > 0) & vis(cy - d / 2, cy + d / 2)):
         costume(c + NP)
-        effect('GHOST', V('gh'))
+        effect('GHOST', V('gh') + (100 - V('gh')) * V('fade') / 100)
         set_stretch(d * V('gs'), d * V('gs'))
         goto(V('gox') + cx * V('gs') - 320, 180 - V('goy') - cy * V('gs'))
         stamp()
@@ -58,7 +58,7 @@ def _text_raw(x, y, s, size, bold, tint, maxw):
     with Else():
         S('_pf', 'g')
     effect('BRIGHTNESS', tint)
-    effect('GHOST', V('gh'))
+    effect('GHOST', V('gh') + (100 - V('gh')) * V('fade') / 100)
     set_stretch(size * V('gs'), size * V('gs'))
     S('_tx', x)
     S('_ti', 1)
@@ -158,7 +158,7 @@ def icon(name, cx, cy, size, tint):
 def _icon_raw(name, cx, cy, size, tint):
     costume(join('i_', name))
     effect('BRIGHTNESS', tint)
-    effect('GHOST', V('gh'))
+    effect('GHOST', V('gh') + (100 - V('gh')) * V('fade') / 100)
     set_stretch(size * 100 / 24 * V('gs'), size * 100 / 24 * V('gs'))
     goto(V('gox') + cx * V('gs') - 320, 180 - V('goy') - cy * V('gs'))
     stamp()
@@ -174,7 +174,7 @@ def appicon(name, cx, cy, size):
 @proc('name cx cy size', name='appicon_raw')
 def _appicon_raw(name, cx, cy, size):
     costume(join('a_', name))
-    effect('GHOST', V('gh'))
+    effect('GHOST', V('gh') + (100 - V('gh')) * V('fade') / 100)
     set_stretch(size * V('gs'), size * V('gs'))
     goto(V('gox') + cx * V('gs') - 320, 180 - V('goy') - cy * V('gs'))
     stamp()

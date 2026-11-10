@@ -89,7 +89,9 @@ async function open(pmp, opts = {}) {
       if (!s.on || !s.dirty) return;
       s.dirty = false;
       let raw = s.text, bold = false;
-      if (raw.startsWith('[b]') && raw.endsWith('[/b]')) { bold = true; raw = raw.slice(3, -4); }
+      raw = raw.replace('[color=rgba(0,0,0,0)]|[/color]', ' ');           // invisible caret placeholder
+      if (raw.startsWith('[b]')) { bold = true; raw = raw.replace('[b]', '').replace('[/b]', ''); }
+      raw = raw.replace(/(?<!\\)\[\/?color[^\]]*\]/g, '');
       const text = unesc(raw);
       const cv = document.createElement('canvas'); const ctx = cv.getContext('2d');
       const font = `${bold ? '600 ' : '500 '}${s.size}px Inter, "Helvetica Neue", Arial, sans-serif`;

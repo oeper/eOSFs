@@ -13,9 +13,10 @@ you haven't seen. Keep every suite green, add tests for each feature, commit + p
   PenguinMod-only blocks. The user has screenshots from the real thing; trust them over my harness.
 
 ## Status (update this when you finish things)
-Done: gesture bar (resize, morph, interruptible, swipe-hold switcher as a real carousel, sideways app switching, customisable navigation), time-based
-animations, live recents, and a **sprite edition** (`eOS-sprites.pmp`: app sprites + clone UI elements + Iris Text) that passes the same suites.
-Still open: items below (renumbered); verify the sprite edition in real PenguinMod and replace the Iris stand-in once the real extension is testable.
+Done: sprite edition is the shipped `eOS.pmp` (apps = sprites, UI = Element clones, Iris Text); gesture bar (resize, morph, interruptible,
+swipe-hold switcher carousel, sideways app switching, customisable navigation); everything animated (screens, unlock, PIN, panels, bars,
+keyboard, dialog, toasts, theme, in-app widgets); draggable control centre + notification centre; time-based animations; live recents.
+Still open below. Verify in real PenguinMod (Iris Text especially) and fix whatever the user's screenshots show first.
 
 ## Backlog (the user asked for all of these; do them in this order, one commit each)
 1. **Gesture completeness**
@@ -26,7 +27,7 @@ Still open: items below (renumbered); verify the sprite edition in real PenguinM
    * Finish "everything animates": exit animations for dialogs/keyboard/quick settings, lock→home unlock transition, home icon entrance after
      lock/recents, key/tile/row press feedback, selection pops (accent, wallpaper, segmented buttons), list insert/delete, terminal line fade-in, smooth
      Snake movement, timer progress bar, slider knob grow, page *back* slides left (forward slides right), wallpaper cross-fade, status icon changes.
-2. **Control center + notification center** (replace the single quick-settings panel):
+2. ~~Control center + notification center~~ (done: drag-down panels; remaining: swipe-to-dismiss notification rows, more tiles)
    * Pull down from the top-right/anywhere on the status bar → Control Center (tiles: Wi-Fi, Bluetooth, dark mode, rotation lock, flashlight-style toggle,
      airplane, do-not-disturb, brightness + volume sliders, now-playing/timer shortcuts, lock/power); from the top-left/centre → Notification Center
      (list of notifications with app icon, title, time, swipe to dismiss, "Clear all"). Drag-to-reveal with the finger, release to snap open/closed,

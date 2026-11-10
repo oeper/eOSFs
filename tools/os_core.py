@@ -52,7 +52,7 @@ for _n, _v in [
     ('screen', 0), ('app', 0), ('view', 0), ('frame_n', 0),
     ('mx', 0), ('my', 0), ('md', 0), ('mdp', 0), ('press', 0), ('rel', 0), ('px', 0), ('py', 0), ('moved', 0),
     ('pg_t', 99), ('kb_t', 99), ('qs_t', 99), ('dlg_t', 99), ('cb_t', 99), ('pt_pop', 99), ('sn_pop', 99),
-    ('ez_o', 1), ('stag_o', 0), ('tab_x', 0), ('ss_prev', -1), ('ss_t0', 0), ('ssf', 0), ('gs', 1), ('gox', 0), ('goy', 0), ('cur_layer', 0), ('act_layer', 0), ('clip0', SB), ('clip1', H - NB), ('gh', 0),
+    ('ez_o', 1), ('stag_o', 0), ('tab_x', 0), ('ss_prev', -1), ('ss_t0', 0), ('ssf', 0), ('gs', 1), ('gox', 0), ('goy', 0), ('no_hit', 0), ('cur_layer', 0), ('act_layer', 0), ('clip0', SB), ('clip1', H - NB), ('gh', 0),
     ('hit_o', 0), ('tap_o', 0), ('tw_o', 0), ('sl_o', 0), ('drag_id', 0),
     ('scroll', 0), ('sc_on', 0), ('sc_y0', 0), ('sc_s0', 0),
     # settings (persist inside the project)
@@ -69,6 +69,8 @@ for _n, _v in [
 
 L('sw_pos', [0] * 8)
 L('gw')          # glyph widths indexed by costume number (filled in by build)
+L('nt_txt')
+L('nt_time')
 L('rec')         # recent apps (most recent last)
 L('app_name', APPS)
 L('app_icon', APP_ICON)
@@ -133,13 +135,17 @@ def input_():
 
 @proc('x y w h')
 def hit(x, y, w, h):
+    """pointer inside the rect, measured through the current draw transform (so anything that is sliding, popping
+    or zooming stays tappable); content drawn with no_hit = 1 (thumbnails, morphing windows) never reacts"""
     S('hit_o', 0)
-    with If((V('mx') >= x) & (V('mx') < x + w) & (V('my') >= y) & (V('my') < y + h) & (V('gs') == 1)):
+    S('_hx', (V('mx') - V('gox')) / V('gs'))
+    S('_hy', (V('my') - V('goy')) / V('gs'))
+    with If((V('_hx') >= x) & (V('_hx') < x + w) & (V('_hy') >= y) & (V('_hy') < y + h) & (V('no_hit') == 0)):
         with If(V('cur_layer') >= V('act_layer')):
             with If(V('cur_layer') > 0):
                 S('hit_o', 1)
             with Else():
-                with If((V('my') >= V('clip0')) & (V('my') < V('clip1')) &
+                with If((V('_hy') >= V('clip0')) & (V('_hy') < V('clip1')) &
                         ((V('kb_open') == 0) | (V('my') < V('kb_top')))):
                     S('hit_o', 1)
 
@@ -159,8 +165,10 @@ def tapr(x, y, w, h):
     """release-activated tap (not after a drag; press must have started inside)"""
     S('tap_o', 0)
     P.hit(x, y, w, h)
+    S('_hpx', (V('px') - V('gox')) / V('gs'))
+    S('_hpy', (V('py') - V('goy')) / V('gs'))
     with If((V('hit_o') == 1) & (V('rel') == 1) & (V('moved') == 0) &
-            (V('px') >= x) & (V('px') < x + w) & (V('py') >= y) & (V('py') < y + h)):
+            (V('_hpx') >= x) & (V('_hpx') < x + w) & (V('_hpy') >= y) & (V('_hpy') < y + h)):
         S('tap_o', 1)
         S('rel', 0)
 
@@ -169,7 +177,7 @@ def tapr(x, y, w, h):
 def scroll_update(mx_):
     """vertical drag scrolling; clamps V('scroll') to 0..max"""
     with If(V('press') == 1):
-        with If((V('gs') == 1) & (V('my') >= V('clip0')) & (V('my') < V('clip1')) & (V('cur_layer') >= V('act_layer')) &
+        with If((V('no_hit') == 0) & (V('my') >= V('clip0')) & (V('my') < V('clip1')) & (V('cur_layer') >= V('act_layer')) &
                 ((V('kb_open') == 0) | (V('my') < V('kb_top')))):
             S('sc_on', 1)
             S('sc_y0', V('my'))
@@ -228,16 +236,50 @@ def slider(id_, x, y, w, v):
         S('press', 0)
     S('sl_o', v)
     with If((V('drag_id') == id_) & (V('md') == 1)):
-        S('sl_o', clamp((V('mx') - x) / w * 100, 0, 100))
+        S('sl_o', clamp(((V('mx') - V('gox')) / V('gs') - x) / w * 100, 0, 100))
+    S('_slk', item(L('sl_k'), id_ % 16 + 1))                   # knob grows while it is held
+    S('_slt', 0)
+    with If((V('drag_id') == id_) & (V('md') == 1)):
+        S('_slt', 1)
+    S('_slk', V('_slk') + (V('_slt') - V('_slk')) * V('lk50'))
+    list_replace(L('sl_k'), id_ % 16 + 1, V('_slk'))
     P.rrect(x, y - 2, w, 4, 2, V('c_div'))
     P.rrect(x, y - 2, V('sl_o') / 100 * w, 4, 2, V('c_acc'))
-    P.circle(x + V('sl_o') / 100 * w, y, 16, pal('white'))
-    P.circle(x + V('sl_o') / 100 * w, y, 8, V('c_acc'))
+    P.circle(x + V('sl_o') / 100 * w, y, 16 + 6 * V('_slk'), pal('white'))
+    P.circle(x + V('sl_o') / 100 * w, y, 8 + 2 * V('_slk'), V('c_acc'))
+
+
+L('sl_k', [0] * 16)
+L('seg_x', [0] * 8)
+L('seg_w', [0] * 8)
+L('pal_hex', ['#' + h for _, h in assets.PAL])
+
+
+@proc('id x y w h')
+def seg_hl(id_, x, y, w, h):
+    """sliding highlight of a choice group: eases from the previous choice to (x, w)"""
+    S('_sgx', item(L('seg_x'), id_))
+    S('_sgw', item(L('seg_w'), id_))
+    with If(V('_sgw') == 0):
+        S('_sgx', x)
+        S('_sgw', w)
+    S('_sgx', V('_sgx') + (x - V('_sgx')) * V('lk35'))
+    S('_sgw', V('_sgw') + (w - V('_sgw')) * V('lk35'))
+    list_replace(L('seg_x'), id_, V('_sgx'))
+    list_replace(L('seg_w'), id_, V('_sgw'))
+    P.rrect(V('_sgx'), y, V('_sgw'), h, 9, V('c_acc'))
 
 
 # --------------------------------------------------------------- theme -----
 @proc('')
 def theme():
+    with If(V('dark') != V('th_dark')):              # remember the old background so frame can dissolve it
+        S('th_prev', V('c_bg'))
+        S('th_t', 0)
+        S('th_dark', V('dark'))
+    with If(V('wall') != V('wp_prev')):
+        S('wp_t', 0)
+        S('wp_prev', V('wall'))
     with If(V('dark') == 1):
         S('c_bg', pal('d_bg'))
         S('c_surf', pal('d_surf'))
@@ -299,3 +341,8 @@ def time_update():
 def notify(msg):
     S('toast', msg)
     S('toast_t', 100)
+    list_insert(L('nt_txt'), 1, msg)             # also kept in the notification centre
+    list_insert(L('nt_time'), 1, V('tstr'))
+    with If(listlen(L('nt_txt')) > 30):
+        list_delete(L('nt_txt'), 31)
+        list_delete(L('nt_time'), 31)

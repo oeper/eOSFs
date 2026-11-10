@@ -147,7 +147,7 @@ def cur_unit():
 
 def VL(name, init=0):
     """sprite-local variable ("for this sprite only" - clones get their own copy)"""
-    u = cur_unit()
+    u = _COMPILING[0] or cur_unit()       # procedure bodies are built lazily while their sprite is being compiled
     if name not in u.locals:
         u.locals[name] = [uid(), init]
     return Ref('var', name, scope=u.name)

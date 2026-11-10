@@ -50,9 +50,28 @@ for _n, _v in [
     ('pt_c', 1), ('pt_w', 4), ('pt_last_x', -99), ('pt_last_y', -99), ('pt_on', 0),
     ('sn_dir', 1), ('sn_nd', 1), ('sn_fx', 5), ('sn_fy', 5), ('sn_score', 0), ('sn_best', 0), ('sn_state', 0),
     ('sn_t', 0), ('sn_spd', 8),
-    ('fmt_o', ''), ('arg_i', 0), ('ed_clen', -1), ('ed_cfile', 0), ('ed_py', 0), ('ed_px', 24),
+    ('fmt_o', ''), ('arg_i', 0), ('tl_n', 0), ('tl_add', 0), ('tl_t', 99), ('tm_bar', 0), ('tm_tot', 60), ('pt_hy', SB + 195), ('ed_clen', -1), ('ed_cfile', 0), ('ed_py', 0), ('ed_px', 24),
 ]:
     V(_n, _v)
+
+
+
+
+def seg_group(gid, var, opts, y, h=28):
+    """row of choices; the selected one gets an accent pill that slides between choices (os_core seg_hl)"""
+    for (lbl, val, x, w) in opts:
+        P.btn(x, y, w, h, lbl, 0)
+        with If(V('tap_o') == 1):
+            S(var, val)
+    for (lbl, val, x, w) in opts:
+        with If(V(var) == val):
+            S('_sgtx', x)
+            S('_sgtw', w)
+            S('_sgtl', lbl)
+    P.seg_hl(gid, V('_sgtx'), y, V('_sgtw'), h)
+    S('fade', clamp(abs_(item(L('seg_x'), gid) - V('_sgtx')) / 24, 0, 1) * 100)     # label appears as the pill arrives
+    P.text_c(V('_sgtx') + V('_sgtw') / 2, y + h / 2, V('_sgtl'), 13, 1, 0)
+    S('fade', 0)
 
 
 # ============================================================= file system ==
@@ -393,9 +412,16 @@ def editor():
     with Else():
         P.scroll_update(V('_ov'))                           # reading: drag to scroll
         S('_eoff', 0 - V('scroll'))
-    P.para(24, SB + 56 + V('_eoff'), W - 48, V('_et'), 14, 20, V('tx'), 1)
-    with If(((V('fclk') % 30) < 18) & (V('kb_open') == 1)):
-        P.rect(V('ed_px') + 1, SB + 56 + V('_eoff') + V('ed_py') - 8, 2, 17, V('c_acc'))
+    if MODE == 'sprite':
+        # the caret is part of the text (Iris places it right after the last character); hidden = transparent
+        with If(V('kb_open') == 1):
+            S('caret_u', 2 + 2 * ((V('fclk') % 30) >= 18))
+        P.para(24, SB + 56 + V('_eoff'), W - 48, V('_et'), 14, 20, V('tx'), 1)
+        S('caret_u', 0)
+    else:
+        P.para(24, SB + 56 + V('_eoff'), W - 48, V('_et'), 14, 20, V('tx'), 1)
+        with If(((V('fclk') % 30) < 18) & (V('kb_open') == 1)):
+            P.rect(V('ed_px') + 1, SB + 56 + V('_eoff') + V('ed_py') - 8, 2, 17, V('c_acc'))
     with If(V('_et') == ''):
         P.text(24, SB + 56, 'Empty file - tap here to start typing', 14, 0, V('tx2'), 0)
     P.header(item(L('fs_name'), V('_ei')))
@@ -680,10 +706,12 @@ with app_unit('Calculator'):
             with If(V('_ck') == 4):
                 S('_cc', V('c_acc'))
                 S('_ctx', 0)
+            S('_cin', 0)
             with If((V('hit_o') == 1) & (V('md') == 1)):
                 S('_cc', V('c_div'))
-            P.rrect(V('_cx'), V('_cy'), V('_cw'), 31, 9, V('_cc'))
-            P.text_c(V('_cx') + V('_cw') / 2, V('_cy') + 15.5, V('_cl'), 16, 1, V('_ctx'))
+                S('_cin', 2)
+            P.rrect(V('_cx') + V('_cin'), V('_cy') + V('_cin'), V('_cw') - V('_cin') * 2, 31 - V('_cin') * 2, 9, V('_cc'))
+            P.text_c(V('_cx') + V('_cw') / 2, V('_cy') + 15.5, V('_cl'), 16 - V('_cin') * 0.5, 1, V('_ctx'))
             with If(V('_ct') == 1):
                 P.calc_key(V('_cl'))
 
@@ -773,6 +801,13 @@ with app_unit('Clock'):
                     P.rrect(W / 2 - 150, 122, 300, 90, 22, V('c_acc'))
                     S('_tcol', 0)
             P.text_c(W / 2, 168, join(V('_tm1'), ':', V('pad_o')), 62, 1, V('_tcol'))
+            S('_tbt', 0)
+            with If(V('tm_run') == 1):
+                S('_tbt', V('tm_left') / clamp(V('tm_tot'), 1, 99999))
+            S('tm_bar', V('tm_bar') + (V('_tbt') - V('tm_bar')) * V('lk35'))
+            with If(V('tm_bar') > 0.003):
+                P.rrect(W / 2 - 150, 210, 300, 4, 2, V('c_div'))
+                P.rrect(W / 2 - 150, 210, 300 * V('tm_bar'), 4, 2, V('c_acc'))
             with If(V('tm_run') == 0):
                 P.btn(W / 2 - 190, 226, 90, 34, '-1 min', 0)
                 with If(V('tap_o') == 1):
@@ -789,6 +824,7 @@ with app_unit('Clock'):
                 P.btn(W / 2 - 60, 276, 120, 38, 'Start', 1)
                 with If(V('tap_o') == 1):
                     S('tm_end', timer() + V('tm_set'))
+                    S('tm_tot', V('tm_set'))
                     S('tm_run', 1)
             with Else():
                 P.btn(W / 2 - 130, 238, 120, 40, 'Cancel', 0)
@@ -1122,11 +1158,21 @@ with app_unit('Terminal'):
         S('_t0', V('_tn') - V('_nl') + 1)
         with If(V('_t0') < 1):
             S('_t0', 1)
-        S('_ty', SB + 12)
+        with If(V('_tn') != V('tl_n')):
+            S('tl_add', clamp(V('_tn') - V('tl_n'), 0, 8))
+            S('tl_n', V('_tn'))
+            S('tl_t', 0)
+        change(V('tl_t'), V('fsc'))
+        P.ease(V('tl_t') / 5)
+        S('_tle', V('ez_o'))
+        S('_ty', SB + 12 + (1 - V('_tle')) * 15 * V('tl_add'))
         S('_tk', V('_t0') - 1)
         with repeat(V('_tn') - V('_t0') + 1):
             inc('_tk')
+            with If(V('_tk') > V('_tn') - V('tl_add')):
+                S('fade', (1 - V('_tle')) * 100)             # the new lines fade in while the text scrolls up
             P.text(10, V('_ty'), item(L('term_out'), V('_tk')), 12, 0, 0, W - 20)
+            S('fade', 0)
             change(V('_ty'), 15)
         S('_pr', join('eos:', V('fs_p'), '$ '))
         P.tw(V('_pr'), 12, 1)
@@ -1245,7 +1291,14 @@ with app_unit('Paint'):
             with If(V('tap_o') == 1):
                 S('pt_w', V('_pw2'))
             with If(V('pt_w') == V('_pw2')):
-                P.rrect(8, V('_py3') - 11, 56, 22, 8, V('c_surf2'))
+                S('_pht', V('_py3') - 11)
+        S('pt_hy', V('pt_hy') + (V('_pht') - V('pt_hy')) * V('lk35'))     # selection glides between sizes
+        P.rrect(8, V('pt_hy'), 56, 22, 8, V('c_surf2'))
+        S('_pk', 0)
+        with repeat(3):
+            inc('_pk')
+            S('_pw2', 2 + (V('_pk') - 1) * 4 + (V('_pk') - 1) * (V('_pk') - 1) * 2)
+            S('_py3', SB + 206 + (V('_pk') - 1) * 24)
             P.circle(36, V('_py3'), V('_pw2') + 2, pal('dgray'))
         P.btn(8, SB + 278, 56, 24, 'Clear', 2)
         with If(V('tap_o') == 1):
@@ -1384,14 +1437,23 @@ with app_unit('Snake'):
         P.rrect(SN_X0 - 3, SN_Y0 - 3, SN_COLS * SN_C + 6, SN_ROWS * SN_C + 6, 10, V('c_div'))
         P.rrect(SN_X0, SN_Y0, SN_COLS * SN_C, SN_ROWS * SN_C, 7, V('c_surf'))
         P.circle(SN_X0 + V('sn_fx') * SN_C + SN_C / 2, SN_Y0 + V('sn_fy') * SN_C + SN_C / 2, SN_C - 5 + 3 * sin(V('fclk') * 14), pal('red'))
+        S('_sf', 0)                                           # fraction of the way to the next cell
+        with If(V('sn_state') == 1):
+            S('_sf', clamp(V('sn_t') / V('sn_spd'), 0, 1))
         S('_k', 0)
         with repeat(listlen(L('sn_x'))):
             inc('_k')
             S('_sc', V('c_acc'))
+            S('_gx', item(L('sn_x'), V('_k')))
+            S('_gy', item(L('sn_y'), V('_k')))
             with If(V('_k') == 1):
                 S('_sc', pal('a_green'))
-            P.rrect(SN_X0 + item(L('sn_x'), V('_k')) * SN_C + 1, SN_Y0 + item(L('sn_y'), V('_k')) * SN_C + 1,
-                    SN_C - 2, SN_C - 2, 5, V('_sc'))
+                S('_gx', V('_gx') + ((V('sn_nd') == 1) - (V('sn_nd') == 3)) * V('_sf'))
+                S('_gy', V('_gy') + ((V('sn_nd') == 2) - (V('sn_nd') == 0)) * V('_sf'))
+            with Else():
+                S('_gx', V('_gx') + (item(L('sn_x'), V('_k') - 1) - V('_gx')) * V('_sf'))
+                S('_gy', V('_gy') + (item(L('sn_y'), V('_k') - 1) - V('_gy')) * V('_sf'))
+            P.rrect(SN_X0 + V('_gx') * SN_C + 1, SN_Y0 + V('_gy') * SN_C + 1, SN_C - 2, SN_C - 2, 5, V('_sc'))
         # side panel
         S('_sx', SN_X0 + SN_COLS * SN_C + 22)
         P.text(V('_sx'), SB + 58, 'Score', 12, 0, V('tx2'), 0)
@@ -1402,7 +1464,11 @@ with app_unit('Snake'):
         for (nm, dx, dy, d) in (('up', 0, -42, 0), ('left', -42, 0, 3), ('right', 42, 0, 1), ('down', 0, 42, 2)):
             P.tap(V('_dx') + dx - 18, V('_dy') + dy - 18, 36, 36)
             S('_dt', V('tap_o'))
-            P.rrect(V('_dx') + dx - 18, V('_dy') + dy - 18, 36, 36, 10, V('c_surf2'))
+            S('_din', 0)
+            with If((V('hit_o') == 1) & (V('md') == 1)):
+                S('_din', 3)                                  # d-pad key sinks while held
+            P.rrect(V('_dx') + dx - 18 + V('_din'), V('_dy') + dy - 18 + V('_din'), 36 - V('_din') * 2,
+                    36 - V('_din') * 2, 10, V('c_surf2'))
             P.icon(nm, V('_dx') + dx, V('_dy') + dy, 18, V('tx'))
             with If(V('_dt') == 1):
                 P.snake_turn(d)
@@ -1412,7 +1478,7 @@ with app_unit('Snake'):
         with If(V('sn_state') == 2):
             change(V('sn_pop'), V('fsc'))
             P.ease(V('sn_pop') / 8)
-            P.set_tf(0.6 + 0.4 * V('ez_o'), SN_X0 + 216, SN_Y0 + 126)
+            P.zoom_at(0.6 + 0.4 * V('ez_o'), SN_X0 + 216, SN_Y0 + 126)
             P.rrect(SN_X0 + 76, SN_Y0 + 78, 280, 96, 16, pal('black'))
             P.text_c(SN_X0 + 216, SN_Y0 + 104, join('Game over - score ', V('sn_score')), 15, 1, 0)
             P.btn(SN_X0 + 156, SN_Y0 + 126, 120, 32, 'Play again', 1)
@@ -1508,19 +1574,10 @@ with app_unit('Settings'):
             # --- Navigation
             P.set_sec('NAVIGATION', V('_y') + 428)
             P.set_row('Navigation style', V('_y') + 450)
-            for (lbl, val, x) in (('Gesture bar', 1, W - 250), ('3 buttons', 0, W - 132)):
-                P.btn(x, V('_y') + 458, 112, 28, lbl, 1 if False else 0)
-                with If(V('tap_o') == 1):
-                    S('navmode', val)
-                with If(V('navmode') == val):
-                    P.btn(x, V('_y') + 458, 112, 28, lbl, 1)
+            seg_group(1, 'navmode', [('Gesture bar', 1, W - 250, 112), ('3 buttons', 0, W - 132, 112)], V('_y') + 458)
             P.set_row('Animation speed', V('_y') + 500)
-            for (lbl, val, x) in (('Fast', 6, W - 250), ('Normal', 10, W - 170), ('Slow', 16, W - 90)):
-                P.btn(x, V('_y') + 508, 72, 28, lbl, 0)
-                with If(V('tap_o') == 1):
-                    S('anim_n', val)
-                with If(V('anim_n') == val):
-                    P.btn(x, V('_y') + 508, 72, 28, lbl, 1)
+            seg_group(2, 'anim_n', [('Fast', 6, W - 250, 72), ('Normal', 10, W - 170, 72), ('Slow', 16, W - 90, 72)],
+                      V('_y') + 508)
             P.btn(W - 190, V('_y') + 546, 176, 28, 'Customise navigation', 0)
             with If(V('tap_o') == 1):
                 S('view', 2)
@@ -1566,13 +1623,8 @@ with app_unit('Settings'):
                 V('nav_barh') / 2, V('_pc'))
         # colour
         P.set_row('Bar colour', V('_y') + 64)
-        for (lbl, val, x) in (('Auto', 0, W - 306), ('White', 1, W - 246), ('Black', 2, W - 186), ('Accent', 3, W - 126),
-                              ('Gray', 4, W - 66)):
-            P.btn(x, V('_y') + 72, 56, 28, lbl, 0)
-            with If(V('tap_o') == 1):
-                S('nav_col', val)
-            with If(V('nav_col') == val):
-                P.btn(x, V('_y') + 72, 56, 28, lbl, 1)
+        seg_group(3, 'nav_col', [('Auto', 0, W - 306, 56), ('White', 1, W - 246, 56), ('Black', 2, W - 186, 56),
+                                 ('Accent', 3, W - 126, 56), ('Gray', 4, W - 66, 56)], V('_y') + 72)
         # sizes
         P.set_row('Bar width', V('_y') + 114)
         P.slider(81, 300, V('_y') + 136, 230, (V('nav_barw') - 60) / 1.6)
@@ -1597,12 +1649,8 @@ with app_unit('Settings'):
         with If(V('tap_o') == 1):
             S('nav_hold', 1 - V('nav_hold'))
         P.set_row('Tap on the bar', V('_y') + 414)
-        for (lbl, val, x) in (('Nothing', 0, W - 328), ('Lock', 1, W - 246), ('Recents', 2, W - 176), ('Home', 3, W - 96)):
-            P.btn(x, V('_y') + 422, 70 if val != 0 else 76, 28, lbl, 0)
-            with If(V('tap_o') == 1):
-                S('nav_tap', val)
-            with If(V('nav_tap') == val):
-                P.btn(x, V('_y') + 422, 70 if val != 0 else 76, 28, lbl, 1)
+        seg_group(4, 'nav_tap', [('Nothing', 0, W - 328, 76), ('Lock', 1, W - 246, 70), ('Recents', 2, W - 176, 70),
+                                 ('Home', 3, W - 96, 70)], V('_y') + 422)
         P.header('Navigation')
 
     @proc('')

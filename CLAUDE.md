@@ -1,129 +1,108 @@
 # eOS – a small operating system for PenguinMod
 
-Two editions are built from the same source (`EOS_MODE` in `tools/modes.py`):
-* `eOS.pmp` – **pen edition**: one hidden sprite, everything stamped with the pen (no text extension needed).
-* `eOS-sprites.pmp` – **sprite edition** (what the user asked for): every app is its own sprite, every UI element is a clone of the `Element`
-  sprite, text is rendered by the **Iris Text** extension (`g1nxIrisText`, https://extensions.penguinmod.com/extensions/Gen1x/iris-text.js).
-  See "Sprite edition" below. Both pass all suites (`tools/test/run_all.sh`).
-
-`eOS.pmp` (repo root) is the shippable pen project: open it in PenguinMod and press the green flag.
-It is **generated** – never edit the .pmp by hand. Edit the Python in `tools/` and rebuild.
+`eOS.pmp` (repo root) is the shipped project: open it in PenguinMod and press the green flag. It is the **sprite edition**: every
+app is its own sprite, every UI element is a clone of the `Element` sprite, text is rendered by the **Iris Text** extension
+(`g1nxIrisText`, https://extensions.penguinmod.com/extensions/Gen1x/iris-text.js). The project is **generated** – never edit the
+.pmp by hand; edit the Python in `tools/` and rebuild. (A legacy single-sprite pen edition can still be built with
+`tools/build_pen.py` → `eOS-pen.pmp`; it is not shipped and not tested by default.)
 
 ```
 python3 tools/build_os.py            # writes ./eOS.pmp           (needs: pip install fonttools)
-python3 tools/lint_pmp.py eOS.pmp    # structural sanity check
-tools/test/run_all.sh                # build + all headless tests (needs: cd tools/test && npm install, playwright)
+python3 tools/lint_pmp.py eOS.pmp    # structural check of every sprite (ids, variables, broadcasts, procedure calls, assets)
+tools/test/run_all.sh                # build + lint + all headless suites (needs: cd tools/test && npm install, playwright)
+EOS_PEN=1 tools/test/run_all.sh      # ... and the pen edition too
 ```
 
 ## What it is
-640x360 phone/tablet-style OS drawn entirely with pen stamps (one hidden sprite `eOS`, everything global on the Stage).
-Boot → lock screen (optional PIN) → home (8 apps) → apps. Status bar, navigation (**gesture bar by default**, or 3 buttons – Settings → Navigation), quick settings
-(tap status bar), recents, dialogs, toasts, on-screen QWERTY keyboard (+ physical a-z/0-9/space/enter), dark mode,
-6 accents, 6 wallpapers, brightness, 12/24h clock.
+640x360 phone/tablet-style OS. Boot → lock screen (optional PIN) → Home (8 apps) → apps. Gesture bar by default (or 3 buttons),
+app switcher, control centre + notification centre (pull down from the status bar), dialogs, toasts, on-screen keyboard
+(+ physical a-z/0-9/space/enter), dark mode, 6 accents, 6 wallpapers, brightness, 12/24h clock, customisable navigation.
 Apps: Files, Notes (shares the editor with Files), Calculator, Clock (clock/stopwatch/timer), Terminal, Paint, Snake, Settings.
-Virtual FS lives in lists `fs_id/fs_name/fs_parent/fs_type/fs_data` (ids 1-5 = root + Documents/Notes/Pictures/System are protected).
-Persistence: TurboWarp Local Storage extension (`localstorage_*`, project id `eos`), autosave every 150 frames + on Home;
-settings + FS only (not Paint/terminal history).
+Virtual FS in lists `fs_id/fs_name/fs_parent/fs_type/fs_data` (ids 1-5 = root + Documents/Notes/Pictures/System are protected).
+Persistence: TurboWarp Local Storage extension (project id `eos`), autosave every 150 frames + on Home; settings + FS only.
+**Everything animates** – the user insists on it: any new state change needs an enter *and* exit animation, time-based, interruptible.
 
 ## Source map (tools/)
 | file | contents |
 |---|---|
-| `sb3.py` | the compiler/DSL (Python → sb3 blocks). `V('x')`/`L('l')` globals, operator overloading, `with If/Else/repeat/until`, `@proc('args')` custom blocks (warp), `P.name(...)` calls, `Script('flag')`. |
-| `assets.py` | all costumes: palette rect/circle stamps, UI icons, app icons, Inter glyphs (via fontTools), wallpapers. |
-| `os_core.py` | primitives (`rect/rrect/circle/text/icon/para`), input, hit-testing, widgets (`btn/switch/slider`), theme, time. |
-| `os_sys.py` | boot, lock/PIN, home, launch animation, recents, status/nav bar, keyboard, quick settings, dialog, toast, `frame`. |
-| `os_apps.py` | file system + every app, `app_init/app_back/app_draw` dispatch, `dlg_run`, `text_submit`, `bg_tasks`. |
+| `sb3.py` | compiler/DSL (Python → sb3). `V('x')`/`L('l')` globals, `VL()` sprite-locals, operators, `with If/Else/repeat/until`, `@proc` custom blocks, `P.name(...)` calls, `Script('flag'/'receive:x'/'clone')`, `unit('Sprite')`, broadcasts, clones, lib pruning, `build_multi`. |
+| `assets.py` / `sp_assets.py` | costumes: UI icons, app icons, wallpapers / Element shapes (palette families, rounded-rect classes, pill). |
+| `os_core.py` | shared basics: input, hit-testing, widgets (`btn/switch/slider/seg_hl`), theme, time, `notify`, easing helpers. Primitives come from `sp_prims.py` (sprite) or `pen_prims.py` (pen). |
+| `os_sys.py` | boot, lock/PIN, Home, launch/close morph, gestures, app switcher, status/nav bar, keyboard, control/notification centre, dialog, toast, `frame`. |
+| `os_apps.py` | file system + every app (each `with app_unit('Name')` = its own sprite), `app_init/app_back/app_draw` dispatch, `dlg_run`, `text_submit`. |
 | `os_store.py` | save/load to localStorage. |
-| `build_os.py`, `lint_pmp.py` | entry points. `test/` = headless Scratch VM + WebGL harness and suites. |
+| `sp_prims.py`, `sp_element.py` | command-buffer primitives; Element clone pool + Measure sprite (Iris Text). |
+| `build_os.py`, `build_pen.py`, `lint_pmp.py`, `modes.py` | entry points / mode switch (`EOS_MODE`). |
 
-## Sprite edition (tools/build_sprites.py, sp_prims.py, sp_element.py, sp_assets.py)
-* Shared OS code (`os_core/os_sys/os_apps/os_store`) lives in unit `lib` and is copied *pruned* (only procedures actually called) into every
-  sprite; `app_unit('Name')` in os_apps puts an app's procedures into its own sprite, reached by broadcasts (`draw_N`, `init_N`, `term_run`).
-  Cross-sprite state is global variables/lists only. Local ("this sprite only") variables: `VL()`.
-* Drawing primitives (`sp_prims.py`) append **commands** to the `cm_*` lists (final stage geometry + look); at the end of `frame` the `render`
-  broadcast lets pool clone *i* draw command *i* (slot order = z-order). Kinds: 1 rect 2 circle 3 rounded rect 4 icon 5 app icon 6 pill key
-  7 text 8 rotated line. Colours = costume family (white / accent) + brightness + hue effects from `pal_*` lists. Rounded rects pick one of
-  8 aspect × 4 radius pre-made costumes and stretch it. Pool size 270 (< 300 clone limit).
-* Text: Iris renders the string onto the clone (`[`,`]` are escaped; bold = `[b]..[/b]`). `Measure` sprite gives text sizes (`P.tw`, `P.para` measure).
-  Setters are cheap when unchanged, so the clone just re-applies them every frame.
-* **Never `broadcast and wait` inside a warp ("run without screen refresh") procedure** – it busy-waits ~500 ms. The sprite build compiles all
-  procedures non-warp (`sb3.DEFAULT_WARP`); pen loops with no broadcasts (`paint_draw`) are explicitly warp. Avoid `pen_clear` each frame
-  (it requests a redraw and ends the VM step): only Paint uses the pen (`pen_dirty`).
-* Known gaps: editor caret position (Iris can't tell us the end of the text), Paint canvas lives on the pen layer (so it isn't visible in
-  thumbnails), the tests use a stand-in for Iris (`harness.js`) – the real extension is unverified. Fonts differ from the pen edition.
+## Sprite architecture
+* Shared code lives in unit `lib` and is copied *pruned* (only procedures actually called) into every sprite; `app_unit('Name')` puts an
+  app's procedures into its own sprite, reached by broadcasts (`draw_N`, `init_N`, `term_run`). Cross-sprite state = globals only.
+* Primitives (`sp_prims.py`) append **commands** to the `cm_*` lists; at the end of `frame`, `broadcast render` (no wait) lets pool clone *i*
+  draw command *i* (slot = z-order). Kinds: 1 rect 2 circle 3 rounded rect 4 icon 5 app icon 6 pill 7 text 8 rotated line. Colours = costume
+  family (white/accent) + brightness + hue effects (`pal_*` lists). Rounded rects pick one of 8 aspect × 4 radius costumes. Pool 270 (< 300 clones).
+* Text: Iris renders the string onto the clone; `[`/`]` are escaped, bold = `[b]..[/b]`, the editor caret is appended as `[color=..]|[/color]`
+  (`caret_u`: 2 visible, 4 transparent placeholder). `Measure` sprite gives text sizes (`P.tw`, `P.para` measure). Setters are cheap when unchanged.
+* **Never `broadcast and wait` inside a warp procedure** (busy-waits ~500 ms): the sprite build compiles procedures non-warp
+  (`sb3.DEFAULT_WARP`); pen loops without broadcasts (`paint_draw`) are explicitly warp. Avoid `pen_clear` each frame (ends the VM step);
+  only Paint draws with the pen (`pen_dirty`). One logical frame = one VM step – keep it that way (`fpf` check in history).
+* Paint's canvas is on the pen layer (below all sprites) – it is not visible inside switcher thumbnails.
 
-## App switcher (os_sys.py `draw_switcher`)
-One layout for hold-halfway and the Recents screen: carousel of live windows (`SW_*` constants), current app centred, older apps left,
-`sw_focus`/`sw_off` = focused app and scroll offset (snaps to cards); drag sideways to scroll, tap to open, swipe a card up to dismiss.
-While the bar is held the dragged window eases into the centre slot (`ga_*`), neighbours fade in; releasing shows the same layout.
+## Drawing / input rules (os_core.py, os_sys.py)
+* **UI space** 640x360, origin top-left, y down; stage = `(x-320, 180-y)`. Constants `W,H,SB(24),NB(28)`. Text `y` = vertical centre.
+* **Immediate mode**: every frame rebuilds the UI; widgets draw *and* hit-test in the same call. `P.tap` = press, `P.tapr` = release
+  (not after a drag, press began inside). Draw inner widgets before their row (first hit consumes the press).
+* **Transforms**: `gs, gox, goy` applied in every primitive. `P.set_base(s,cx,cy)` = window level (absolute), `P.set_tf(s,cx,cy)` = relative to the
+  window (moves the window centre to cx,cy), `P.zoom_at(s,px,py)` = scale *around a point*. Reset with `set_base(1, W/2, H/2)`.
+* **Fades**: `gh` = ghost of the next shapes; `fade` (0..100) is a *group* fade multiplied into every element – use it to fade whole screens.
+* **Hit-testing** maps the pointer through the inverse transform, so sliding/popping things stay tappable. Content that must be inert sets
+  `no_hit=1` (thumbnails, morphing/dragged windows). Layers: `cur_layer` ≥ `act_layer` (0 normal, 1 panel open/switcher, 2 dialog, 3 dragging);
+  set `cur_layer -1` to draw something visible-but-untappable (fading out). Layer 0 is clipped to `clip0..clip1` and above `kb_top`.
+* **Easing**: `x += (target - x) * lkNN` then **snap** when within 0.003 (`abs_(t-x) < 0.003`) – asymptotic values never reach 1 otherwise.
+* **Booleans**: never store a comparison in a variable (`S('v', a > b)` stores `true`); use `If` and set 1/0.
+* **Time base**: never count frames. `fsc` = elapsed 30fps-frames; advance counters with `change(V('x'), V('fsc'))`; `lk30/lk35/lk50`
+  frame-rate-independent easing factors; `fclk` for blinks. `timebase.js` checks 30/60/120 fps give equal durations.
+* `frame` sets `moved=1` whenever (screen, app, view, panel, dialog, keyboard) changes so a release can't hit the new screen.
+* Temps are globals prefixed `_` (not re-entrant). Adding an app: `APPS/APP_ICON` (os_core), `a_<icon>` costume, an `app_unit` section with
+  `app_<name>` + `receive:draw_N`/`init_N` scripts, `app_back` entries; text fields return through `text_submit` (`ti_act`).
 
-## Navigation / animations (os_sys.py)
-* **Global draw transform** `gs, gox, goy` is applied inside every primitive (`rect/circle/text/para/icon/appicon/pillkey/hand` and Paint's replay);
-  `P.set_tf(scale, cx, cy)` draws the next things scaled around a centre. Reset to identity at the start of `frame` and after `draw_app`.
-  Anything new that stamps or pen-draws directly must apply it too.
-* `navmode` 1 = gesture bar, 0 = 3 buttons. `gesture_update` (runs first in `frame`): press in the bottom `NB` px = `gtype 1`
-  (drag up in an app → `gmode 1`: app shrinks with `ga_s`, follows the finger via `ga_cx/ga_cy`; release above 74% of the height → `gmode 2`
-  close animation into its icon, else `gmode 3` snap back; on Home it opens Recents, in Recents it goes Home); press within 14 px of a
-  side edge = `gtype 2` edge-swipe back. Back/Home buttons and `nav_back` also use `close_app_anim`.
-* Opening an app (`launch`) animates from the icon (or recents card) for `anim_n` frames (Settings: Fast 6 / Normal 10 / Slow 16).
-  While any transform animation runs `act_layer` is 3, so no widget reacts.
-* **Morph animation**: `draw_card(w,h,cx,cy,fa,ia,r)` draws an app window of any shape (bg, content scaled to fit with alpha `fa`, app icon with alpha `ia`).
-  Opening = icon → app (`open_t`), closing = app → icon on its own layer (`cl_*`, `draw_closing`) so Home is usable and another app can open while it
-  runs; closing can start while opening (`cur_w/h/cx/cy/p` hold the live window). While `gs != 1` primitives cull anything not fully inside the window
-  (`vis()`), and `hit()`/`scroll_update` ignore input, so scrolled content can't spill out of a shrunken window.
-* **Hold halfway** (`g_still` ≥ 7 frames between 42%-82% of the height): `g_rec=1` → `draw_switcher_preview` shows the other open apps around the
-  shrunken card; releasing opens the Recents screen.
-* **Time base**: never count frames. `fsc` = elapsed time in 30 fps-frames (computed from `timer()` at the top of `frame`); advance every
-  animation counter with `change(V('x'), V('fsc'))`, use `lk30/lk35/lk50` for frame-rate-independent easing, `fclk` for blinks/pulses. Tests run on a fake
-  clock (`open(pmp,{fps})`); `timebase.js` checks 30/60/120 fps give equal durations.
-* **Recents** shows live app windows: each app's `view`/`scroll` are saved per frame in `app_view/app_scroll` and `draw_thumb` redraws any app from
-  them. Use unique `_rc*` temps there – the app draw procs share the global temp namespace.
-* **In-app animation helpers** (os_core.py): `P.ease(t)` → `ez_o`; `P.stag(k)` → `stag_o` (list-row entrance offset). Counters that restart on a
-  change and are advanced per frame: `pg_t` (page slide-in/row stagger; reset when screen/app/view/folder/clock tab changes), `kb_t` (keyboard rise),
-  `qs_t` (quick-settings drop), `dlg_t` (dialog pop), `cb_t` (calculator display pulse), `pt_pop` (Paint colour), `sn_pop` (Snake game-over).
-  Switch knobs glide via list `sw_pos` (each `P.switch` call needs a unique id 1-8); Clock tab underline glides via `tab_x`; the second hand
-  sweeps using `ssf`. Speeds scale with `anim_n` where noted. Reuse these when adding animations; apply them with `P.set_tf`.
-* Navigation settings (Settings → Customise navigation): `nav_col nav_barw nav_barh nav_close nav_swipe nav_edge nav_hold nav_tap`; sideways swipe on the bar
-  = previous/next app (`swipe_switch`, slide on the closing layer, recents order untouched via `launch_keep`).
-* Transforms nest: windows call `set_base` (absolute), in-app effects call `set_tf` (relative to the window).
-* Customisable state (saved by `os_store.py`, fields in order): dark, accent, wall, bright, wifi, bt, h24, pin, sn_best, navmode, anim_n.
-  Layout constants (`W H SB NB`, sizes in code) are still hard-coded – see "Ideas".
+## Animation catalogue (where to look)
+* Screens: lock wakes from black (`pg_t`); unlock = lock face lifts away (`draw_unlock_overlay`, `unl_t`) while Home's clock zooms in and icons
+  rise one by one; PIN face↔pad cross-fade (`pin_a`), dots pop (`pin_pop`) / shake on a wrong PIN (`pin_sh`).
+* Apps: open = icon→window morph (`open_t`, `draw_card`), close = window→icon on the closing layer (`cl_*`), interruptible both ways and
+  continuing from the current size; gesture drag (`gmode 1`), spring back (`gmode 3`), sideways bar swipe slides apps (`swipe_switch`).
+* Switcher (`draw_switcher`): hold-halfway card + neighbours; same layout after release; dim fades in; leaving fades cards out (`draw_rec_exit`,
+  `rx_t`), swipe-up dismiss, Close all staggers then returns Home.
+* Bars: status bar solidity `sb_a`, wifi icon `wifi_a`; nav bar appears `bar_a`, pill↔buttons `nm_a`, pill colour cross-fade `pc_*`.
+* Panels (`panel_input`, `draw_panels`, `draw_cc`, `draw_nc`): `qs_p` follows the finger, snaps by position+direction, tap toggles; tiles
+  cross-fade (`qt_a`); notification rows slide up after a dismiss (`nt_dt`), Clear all slides them away (`nt_clr`); panel height eases (`nc_h`).
+* Overlays: keyboard slides + apps resize (`kb_a` → `kb_top`), dialog pop/fade (`dlg_a`), toast slides in/out, dark mode dissolves (`th_t`),
+  wallpaper dip (`wp_t`).
+* In-app: page slide (direction from `pg_dir`, back = from the left), list rows stagger (`stag`) and re-settle when a list changes (`_lsig`),
+  switch knobs (`sw_pos`), slider knob grows (`sl_k`), choice groups slide (`seg_group` → `seg_hl`), key/button/tile/d-pad press sink,
+  calculator display pulse (`cb_t`), Clock tab underline (`tab_x`) + sweeping second hand (`ssf`) + timer bar (`tm_bar`), terminal lines scroll
+  in (`tl_*`), Snake glides between cells, food pulse, game-over pop (`zoom_at`), Paint colour pop + brush highlight glide (`pt_hy`).
 
-* **UI space**: 640x360, origin top-left, y down. Stage coords are `(x-320, 180-y)`. Constants `W,H,SB(24),NB(28)` in `os_core.py`.
-* **Immediate mode**: `frame` clears the pen and redraws everything every frame; widgets draw *and* hit-test in the same call.
-  `P.tap` = press-activated (keys, d-pad), `P.tapr` = release-activated, only if not dragged and the press began inside (lists, buttons).
-  Both set `tap_o`; `P.btn` leaves its result in `tap_o` too. Draw inner widgets before the row that contains them (first hit consumes the press).
-* **Layers**: `cur_layer` (set by the code drawing) must be >= `act_layer` (set at the start of `frame`: 0 normal, 1 quick-settings/recents, 2 dialog)
-  for a hit to count. Layer-0 hits are also limited to `clip0..clip1` rows and blocked below `kb_top` while the keyboard is open.
-  Scrolled content is drawn *first* and the opaque header/nav drawn over it (there is no clipping); set `clip0=SB+37` for scrolling views.
-* `frame` sets `moved=1` whenever (screen, app, view, qs, dialog, keyboard) changes so the release of a press that caused a transition
-  can't activate a widget of the new screen.
-* **Text**: costume `g<char>` (medium) / `b<char>` (bold); widths in list `gw` indexed by costume number. Tint = brightness effect
-  (0 white, -90 near-black) – glyphs/icons are white. Only ASCII 33-126 plus `×÷−±•°…`. `y` for text is the *vertical centre*.
-* **Colours**: palette = costume numbers (`pal('name')`; rect stamp = number, circle = number + `NPAL`). Theme variables
-  `c_bg c_surf c_surf2 c_div c_acc tx tx2` are set by `P.theme`. Translucent shapes (`gh` = ghost) show overlap artefacts for `rrect`;
-  use single-stamp costumes (`k_pill`) for those.
-* Temp variables in procedures are globals prefixed `_` (not re-entrant – don't recurse). Proc args are real args.
-* Adding an app: add name/icon to `APPS/APP_ICON` (os_core), an `a_<icon>` costume (assets), `app_<name>` proc, entries in `app_draw`,
-  `app_init`, `app_back` (os_apps). Text-field results arrive in `text_submit` keyed by `ti_act` (10-12 files, 20 editor, 30 terminal).
+## Settings / customisation
+Saved fields (os_store.py, in order): dark, accent, wall, bright, wifi, bt, h24, pin, sn_best, navmode, anim_n, nav_col, nav_barw,
+nav_barh, nav_close, nav_swipe, nav_edge, nav_hold, nav_tap. Layout constants (`W H SB NB`, sizes) are still hard-coded.
 
 ## Gotchas (all bitten already)
-* **No `transform=` attributes in SVGs**: Scratch's loader rewrites paths under transforms and mangles `h/H/V`. Bake coordinates.
-* SVG costume size = **viewBox**, not width/height; rotation centre is in user-space coordinates (keep viewBox origin 0,0).
-* `pen` must be listed in project `extensions`; `Script` bodies run eagerly while `@proc` bodies are lazy (use `make_main_script()` pattern).
-* Variables hold strings after `set`; `"0." == "0"` is true in Scratch → compare lengths too. `stop this script` inside a procedure only leaves the procedure.
-* PenguinMod-only blocks used: `looks_setStretch` (all stamps), `jgRuntime_setStageSize` (flag script). Everything else is core Scratch + pen
-  + `localstorage`. Real PenguinMod was **not** available when this was built; behaviour was verified in the stock scratch-vm + scratch-render
-  with `harness.js` shimming those blocks. The harness forces `navmode 0` after the flag unless `open(pmp,{gesture:true})`.
+* **No `transform=` attributes in SVGs** (Scratch's loader mangles `h/H/V` under transforms). SVG size = viewBox; rotation centre in user space.
+* `pen` must be listed in project `extensions`; `Script` bodies run eagerly, `@proc` bodies lazily (`make_main_script()` pattern); `VL()` inside a
+  procedure registers on the sprite being compiled.
+* Variables hold strings after `set`; `"0." == "0"` is true → compare lengths too. `stop this script` in a procedure only leaves it.
+* PenguinMod-only blocks: `looks_setStretch`, `jgRuntime_setStageSize`; extensions: pen, localstorage, Iris Text. Real PenguinMod is **not**
+  available here: everything is verified in stock scratch-vm + scratch-render with shims in `harness.js` (incl. an Iris Text stand-in written
+  from the extension's source in PenguinMod/PenguinMod-ExtensionsGallery `static/extensions/Gen1x/iris-text.js`). The user's screenshots
+  from real PenguinMod trump the harness.
 
 ## Testing
-`tools/test/harness.js` loads a .pmp in headless Chromium (real VM + WebGL renderer), shims setStretch/setStageSize/localstorage,
-steps frames, injects mouse/keys, reads variables, takes screenshots (`EOS_OUT`, default `/tmp/eos-test`).
-Suites: `gesture.js` (gesture bar, animations, edge swipe; runs with the gesture bar), `interact.js` (apps, keyboard, files, terminal, PIN, recents…), `visual.js` (shift/physical keys/dark mode/animation),
-`persist.js` (save/load/corruption), `robust.js` (protections + per-frame timings). Coordinates in tests mirror the layout constants;
-if you move a widget, update the click positions.
+`tools/test/harness.js`: headless Chromium, real VM + WebGL renderer, fake clock (`fps` option), shims, mouse/keys, variables, screenshots
+(`EOS_OUT`, default `/tmp/eos-test`). The harness forces `navmode 0` after the flag unless `open(pmp,{gesture:true})`.
+Suites: `interact` (apps/keyboard/files/terminal/PIN/recents), `visual`, `persist`, `robust` (protections + timings), `gesture`, `nav`
+(switcher, sideways switch, nav settings), `timebase` (fps independence), `anim` (every transition takes time + mid-animation screenshots).
+Coordinates mirror layout constants – if you move a widget, update the clicks. Always *look* at the screenshots.
 
-## Ideas not done
-Make every layout constant a variable (stage size, bar heights, icon size, corner radius, font, fps) – only nav mode and animation speed are done;
-Wi-Fi/Bluetooth are cosmetic; battery is static; no sound; Paint isn't persisted; editor has no caret positioning (append-only);
-no notifications centre; physical Backspace/Shift aren't available in stock key menus.
+## Not done yet (see NEXT_PROMPT.md)
+App store, back-gesture visual (edge swipe works but shows no chevron), Home icon dragging/rearranging, layout independence (any stage size),
+real Iris verification, Wi-Fi/Bluetooth/battery are cosmetic, no sound, Paint not persisted, physical Backspace/Shift.

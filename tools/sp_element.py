@@ -50,10 +50,16 @@ def _text_setup(size, tint, bold, maxw, lh, src):
     with Else():
         call_ext(IRIS + '_setLineHeight', HEIGHT=1.2)
     esc = _escape(src)
-    with If(bold == 1):
-        call_ext(IRIS + '_setText', TEXT=join('[b]', esc, '[/b]'))
+    car = VL('car_s', '')
+    _set(car, '')
+    with If(floor(bold / 2) == 1):
+        _set(car, join('[color=', item(L('pal_hex'), V('c_acc')), ']|[/color]'))
+    with If(floor(bold / 2) == 2):
+        _set(car, '[color=rgba(0,0,0,0)]|[/color]')
+    with If(bold % 2 == 1):
+        call_ext(IRIS + '_setText', TEXT=join('[b]', esc, '[/b]', car))
     with Else():
-        call_ext(IRIS + '_setText', TEXT=esc)
+        call_ext(IRIS + '_setText', TEXT=join(esc, car))
     emit(St(IRIS + '_renderNow'))
     _set(tx_w, ext_reporter(IRIS + '_getExactTextWidth'))
     _set(tx_h, ext_reporter(IRIS + '_getExactTextHeight'))

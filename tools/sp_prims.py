@@ -8,6 +8,8 @@ CM_LISTS = ['cm_k', 'cm_x', 'cm_y', 'cm_w', 'cm_h', 'cm_a', 'cm_s', 'cm_g', 'cm_
 for _n in CM_LISTS:
     L(_n)
 V('cm_n', 0)
+V('fade', 0)
+V('caret_u', 0)       # editor caret: 2 = visible, 4 = invisible placeholder (keeps wrapping stable)
 for _n in ('ms_s', 'ms_size', 'ms_bold', 'ms_maxw', 'ms_lh', 'ms_w', 'ms_h'):
     V(_n, 0)
 
@@ -50,7 +52,7 @@ def cmd(k, x, y, w, h, a, s, g, t, e, u, p, m, l):
     list_add(L('cm_h'), h)
     list_add(L('cm_a'), a)
     list_add(L('cm_s'), s)
-    list_add(L('cm_g'), g)
+    list_add(L('cm_g'), g + (100 - g) * V('fade') / 100)     # group fade multiplies into every element's ghost
     list_add(L('cm_t'), t)
     list_add(L('cm_e'), e)
     list_add(L('cm_u'), u)
@@ -110,7 +112,7 @@ def pillkey(cx, cy, tint, gh_):
 @proc('x y s size bold tint maxw anchor lh')
 def textcmd(x, y, s, size, bold, tint, maxw, anchor, lh):
     with If(vis(y - size * 0.7, y + size * 0.7) | (anchor == 3)):
-        P.cmd(7, gx(x), gy(y), V('gs'), 0, s, size, V('gh'), tint, 0, bold, anchor, maxw, lh)
+        P.cmd(7, gx(x), gy(y), V('gs'), 0, s, size, V('gh'), tint, 0, bold + V('caret_u'), anchor, maxw, lh)
 
 
 @proc('x y s size bold tint maxw')
