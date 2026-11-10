@@ -1,0 +1,1 @@
+{"name":"eos-test","private":true,"version":"1.0.0","dependencies":{"scratch-render":"^1.0.300","scratch-storage":"^6.2.1","scratch-svg-renderer":"^3.1.19","scratch-vm":"^5.0.300"}}
