@@ -10,7 +10,7 @@ const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98
   await h.click(528, 42); await h.frames(4);
   await h.setVar('ti', 'remember this\nline two ¦§ stays'); await h.frames(3);   // note: weird chars cannot be typed anyway
   await h.setVar('ti', 'remember this\nline two'); await h.frames(3);
-  await h.click(320, 346); await h.frames(3);   // home -> triggers save
+  await h.click(320, 346); await h.frames(14);   // home -> triggers save
   await h.setVar('dark', 1); await h.setVar('accent', 4); await h.setVar('wall', 3); await h.setVar('pin', '4321'); await h.setVar('sn_best', 17);
   await h.frames(160);
   const store = await h.store();

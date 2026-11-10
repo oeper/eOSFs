@@ -25,14 +25,14 @@ const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98
   // many lines of output
   for (let i = 0; i < 5; i++) await run('help');
   await timeFrames('terminal full');
-  await h.click(320, 346); await h.frames(3);
+  await h.click(320, 346); await h.frames(14);
   // editor with long text
   await h.click(...icon(2)); await h.frames(14); await h.click(528, 42); await h.frames(4);
   await h.setVar('ti', 'The quick brown fox jumps over the lazy dog. '.repeat(32)); await h.frames(3);
   expect('editor handles ~1400 chars', (await V('ti')).length > 1300);
   await timeFrames('editor 1400 chars');
   await h.shot((process.env.EOS_OUT || '/tmp/eos-test') + '/r_editor_long.png');
-  await h.click(320, 346); await h.frames(3);
+  await h.click(320, 346); await h.frames(14);
   // paint with many strokes
   await h.click(...icon(6)); await h.frames(14);
   const pts = 2500; const xs = [], ys = [], cs = [], ws = [], ss = [];
@@ -40,7 +40,7 @@ const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98
   await h.setVar('ps_x', xs); await h.setVar('ps_y', ys); await h.setVar('ps_c', cs); await h.setVar('ps_w', ws); await h.setVar('ps_s', ss);
   await timeFrames('paint 2500 pts');
   await h.shot((process.env.EOS_OUT || '/tmp/eos-test') + '/r_paint.png');
-  await h.click(320, 346); await h.frames(3);
+  await h.click(320, 346); await h.frames(14);
   // files with many entries
   await h.click(...icon(1)); await h.frames(14);
   await h.page.evaluate(() => {

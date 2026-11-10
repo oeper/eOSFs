@@ -11,7 +11,7 @@ tools/test/run_all.sh                # build + all headless tests (needs: cd too
 
 ## What it is
 640x360 phone/tablet-style OS drawn entirely with pen stamps (one hidden sprite `eOS`, everything global on the Stage).
-Boot → lock screen (optional PIN) → home (8 apps) → apps. Status bar, nav bar (back/home/recents), quick settings
+Boot → lock screen (optional PIN) → home (8 apps) → apps. Status bar, navigation (**gesture bar by default**, or 3 buttons – Settings → Navigation), quick settings
 (tap status bar), recents, dialogs, toasts, on-screen QWERTY keyboard (+ physical a-z/0-9/space/enter), dark mode,
 6 accents, 6 wallpapers, brightness, 12/24h clock.
 Apps: Files, Notes (shares the editor with Files), Calculator, Clock (clock/stopwatch/timer), Terminal, Paint, Snake, Settings.
@@ -30,7 +30,19 @@ settings + FS only (not Paint/terminal history).
 | `os_store.py` | save/load to localStorage. |
 | `build_os.py`, `lint_pmp.py` | entry points. `test/` = headless Scratch VM + WebGL harness and suites. |
 
-## Conventions you must know
+## Navigation / animations (os_sys.py)
+* **Global draw transform** `gs, gox, goy` is applied inside every primitive (`rect/circle/text/para/icon/appicon/pillkey/hand` and Paint's replay);
+  `P.set_tf(scale, cx, cy)` draws the next things scaled around a centre. Reset to identity at the start of `frame` and after `draw_app`.
+  Anything new that stamps or pen-draws directly must apply it too.
+* `navmode` 1 = gesture bar, 0 = 3 buttons. `gesture_update` (runs first in `frame`): press in the bottom `NB` px = `gtype 1`
+  (drag up in an app → `gmode 1`: app shrinks with `ga_s`, follows the finger via `ga_cx/ga_cy`; release above 74% of the height → `gmode 2`
+  close animation into its icon, else `gmode 3` snap back; on Home it opens Recents, in Recents it goes Home); press within 14 px of a
+  side edge = `gtype 2` edge-swipe back. Back/Home buttons and `nav_back` also use `close_app_anim`.
+* Opening an app (`launch`) animates from the icon (or recents card) for `anim_n` frames (Settings: Fast 6 / Normal 10 / Slow 16).
+  While any transform animation runs `act_layer` is 3, so no widget reacts.
+* Customisable state (saved by `os_store.py`, fields in order): dark, accent, wall, bright, wifi, bt, h24, pin, sn_best, navmode, anim_n.
+  Layout constants (`W H SB NB`, sizes in code) are still hard-coded – see "Ideas".
+
 * **UI space**: 640x360, origin top-left, y down. Stage coords are `(x-320, 180-y)`. Constants `W,H,SB(24),NB(28)` in `os_core.py`.
 * **Immediate mode**: `frame` clears the pen and redraws everything every frame; widgets draw *and* hit-test in the same call.
   `P.tap` = press-activated (keys, d-pad), `P.tapr` = release-activated, only if not dragged and the press began inside (lists, buttons).
@@ -56,15 +68,16 @@ settings + FS only (not Paint/terminal history).
 * Variables hold strings after `set`; `"0." == "0"` is true in Scratch → compare lengths too. `stop this script` inside a procedure only leaves the procedure.
 * PenguinMod-only blocks used: `looks_setStretch` (all stamps), `jgRuntime_setStageSize` (flag script). Everything else is core Scratch + pen
   + `localstorage`. Real PenguinMod was **not** available when this was built; behaviour was verified in the stock scratch-vm + scratch-render
-  with `harness.js` shimming those blocks.
+  with `harness.js` shimming those blocks. The harness forces `navmode 0` after the flag unless `open(pmp,{gesture:true})`.
 
 ## Testing
 `tools/test/harness.js` loads a .pmp in headless Chromium (real VM + WebGL renderer), shims setStretch/setStageSize/localstorage,
 steps frames, injects mouse/keys, reads variables, takes screenshots (`EOS_OUT`, default `/tmp/eos-test`).
-Suites: `interact.js` (apps, keyboard, files, terminal, PIN, recents…), `visual.js` (shift/physical keys/dark mode/animation),
+Suites: `gesture.js` (gesture bar, animations, edge swipe; runs with the gesture bar), `interact.js` (apps, keyboard, files, terminal, PIN, recents…), `visual.js` (shift/physical keys/dark mode/animation),
 `persist.js` (save/load/corruption), `robust.js` (protections + per-frame timings). Coordinates in tests mirror the layout constants;
 if you move a widget, update the click positions.
 
 ## Ideas not done
+Make every layout constant a variable (stage size, bar heights, icon size, corner radius, font, fps) – only nav mode and animation speed are done;
 Wi-Fi/Bluetooth are cosmetic; battery is static; no sound; Paint isn't persisted; editor has no caret positioning (append-only);
 no notifications centre; physical Backspace/Shift aren't available in stock key menus.

@@ -36,7 +36,7 @@ const calcKey = k => k === '0' ? [228, 293.5] : k === '.' ? [366, 293.5] : k ===
   await calc('C'); await calc('1÷3='); 
   await h.shot(OUT + 'i_calc.png');
   expect('1/3 rounded', String(await V('calc_d')) === '0.3333333333', await V('calc_d'));
-  await h.click(...HOME); await h.frames(4);
+  await h.click(...HOME); await h.frames(14);
   expect('home button -> home', await V('screen') === 2);
 
   // ---------- Notes + keyboard
@@ -52,11 +52,11 @@ const calcKey = k => k === '0' ? [228, 293.5] : k === '.' ? [366, 293.5] : k ===
   expect('backspace removes chars', await V('ti') === 'hi the', JSON.stringify(await V('ti')));
   const data = await V('fs_data');
   expect('note saved into fs_data', data.includes('hi the'), JSON.stringify(data));
-  await h.click(...BACK); await h.frames(3);   // hides keyboard
+  await h.click(...BACK); await h.frames(14);   // hides keyboard
   expect('back hides keyboard first', await V('kb_open') === 0 && await V('view') === 1);
-  await h.click(...BACK); await h.frames(3);
+  await h.click(...BACK); await h.frames(14);
   expect('back leaves editor', await V('view') === 0 && await V('screen') === 3);
-  await h.click(...BACK); await h.frames(3);
+  await h.click(...BACK); await h.frames(14);
   expect('back from list -> home', await V('screen') === 2);
 
   // ---------- Files: new folder / delete
@@ -71,7 +71,7 @@ const calcKey = k => k === '0' ? [228, 293.5] : k === '.' ? [366, 293.5] : k ===
   await h.click(300, 82); await h.frames(3);
   expect('tap folder enters it', await V('f_dir') === 2, await V('f_dir'));
   await h.shot(OUT + 'i_files_docs.png');
-  await h.click(...BACK); await h.frames(3);
+  await h.click(...BACK); await h.frames(14);
   expect('back goes to parent dir', await V('f_dir') === 1 && await V('screen') === 3);
   // delete 'abc' (5th row now: Documents, Notes, Pictures, System, abc)  -> trash at x=612
   await h.click(612, 82 + 4 * 46); await h.frames(3);
@@ -79,7 +79,7 @@ const calcKey = k => k === '0' ? [228, 293.5] : k === '.' ? [366, 293.5] : k ===
   await h.shot(OUT + 'i_dialog.png');
   await h.click(392, 221); await h.frames(3);
   expect('confirming deletes', !(await V('fs_name')).includes('abc'), JSON.stringify(await V('fs_name')));
-  await h.click(...HOME); await h.frames(3);
+  await h.click(...HOME); await h.frames(14);
 
   // ---------- Terminal
   await h.click(...icon(5)); await h.frames(14);
@@ -93,7 +93,7 @@ const calcKey = k => k === '0' ? [228, 293.5] : k === '.' ? [366, 293.5] : k ===
   expect('pwd prints /proj', out.includes('/proj'), JSON.stringify(out.slice(-8)));
   expect('unknown command message', out.some(l => l.startsWith('nope: command not found')));
   await h.shot(OUT + 'i_term.png');
-  await h.click(...HOME); await h.frames(3);
+  await h.click(...HOME); await h.frames(14);
 
   // ---------- Settings: dark mode + wallpaper + PIN
   await h.click(...icon(8)); await h.frames(14);
@@ -111,7 +111,7 @@ const calcKey = k => k === '0' ? [228, 293.5] : k === '.' ? [366, 293.5] : k ===
   await h.setVar('scroll', 412); await h.frames(3);
   await h.shot(OUT + 'i_settings_bottom.png');
   await h.setVar('scroll', 0); await h.frames(2);
-  await h.click(...HOME); await h.frames(3);
+  await h.click(...HOME); await h.frames(14);
 
   // ---------- PIN lock
   await h.setVar('pin', '1234');
@@ -154,7 +154,7 @@ const calcKey = k => k === '0' ? [228, 293.5] : k === '.' ? [366, 293.5] : k ===
   await h.shot(OUT + 'i_clock_timer.png');
 
   // ---------- Paint
-  await h.click(...HOME); await h.frames(3);
+  await h.click(...HOME); await h.frames(14);
   await h.click(...icon(6)); await h.frames(14);
   await h.drag(150, 150, 400, 250, 12);
   expect('painting records strokes', (await V('ps_x')).length > 5, (await V('ps_x')).length);
@@ -162,7 +162,7 @@ const calcKey = k => k === '0' ? [228, 293.5] : k === '.' ? [366, 293.5] : k ===
   await h.shot(OUT + 'i_paint.png');
 
   // ---------- Snake
-  await h.click(...HOME); await h.frames(3);
+  await h.click(...HOME); await h.frames(14);
   await h.click(...icon(7)); await h.frames(14);
   await h.click(564, 206); await h.frames(1);  // right
   await h.frames(60);

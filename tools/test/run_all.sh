@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 python3 ../build_os.py "${EOS_PMP:-../../eOS.pmp}"
-for t in interact visual persist robust; do
+for t in interact visual persist robust gesture; do
   echo "== $t"; node "$t.js" "${EOS_PMP:-../../eOS.pmp}" | tee /tmp/eos-$t.log | grep -E "FAIL|ALL OK|FAILED" || true
   grep -q "ALL OK" /tmp/eos-$t.log || { echo "$t failed"; exit 1; }
 done

@@ -68,7 +68,10 @@ async function open(pmp, opts = {}) {
 
   const api = {
     page, browser,
-    async flag() { await page.evaluate(() => vm.greenFlag()); },
+    async flag() {
+      await page.evaluate(() => vm.greenFlag());
+      if (!opts.gesture) { await api.frames(3); await api.setVar('navmode', 0); }   // older suites use the 3 buttons
+    },
     async frames(n = 1) {
       await page.evaluate((n) => {
         for (let i = 0; i < n; i++) { vm.runtime._step(); }

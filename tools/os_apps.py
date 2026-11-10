@@ -247,6 +247,8 @@ def factory_reset():
     S('bt', 0)
     S('h24', 0)
     S('pin', '')
+    S('navmode', 1)
+    S('anim_n', 10)
     P.theme()
     P.paint_clear()
     list_clear(L('term_out'))
@@ -350,7 +352,7 @@ def editor():
     with If((V('kb_open') == 1) & (V('ti_act') == 20)):
         list_replace(L('fs_data'), V('_ei'), V('ti'))
     S('_et', item(L('fs_data'), V('_ei')))
-    P.rect(0, SB + 37, W, H, V('c_surf'))
+    P.rect(0, SB + 37, W, H - SB - 37, V('c_surf'))
     # measure, then draw bottom-anchored when the text is longer than the page
     with If((length(V('_et')) != V('ed_clen')) | (V('ed_file') != V('ed_cfile'))):
         P.para(24, 0, W - 48, V('_et'), 14, 20, V('tx'), 0)      # measuring is the expensive part: cache it
@@ -742,10 +744,10 @@ def hand(x1, y1, x2, y2, w, color):
     """round-capped pen line in UI coordinates (clock hands/ticks)"""
     pen_up()
     pen_color(color)
-    pen_size(w)
-    goto(x1 - 320, 180 - y1)
+    pen_size(w * V('gs'))
+    goto(V('gox') + x1 * V('gs') - 320, 180 - V('goy') - y1 * V('gs'))
     pen_down()
-    goto(x2 - 320, 180 - y2)
+    goto(V('gox') + x2 * V('gs') - 320, 180 - V('goy') - y2 * V('gs'))
     pen_up()
 
 
@@ -1045,7 +1047,7 @@ def term_echo(s):
 
 @proc('')
 def app_term():
-    P.rect(0, SB, W, H, pal('black'))
+    P.rect(0, SB, W, H - SB, pal('black'))
     S('_tb', H - NB - 4)
     with If(V('kb_open') == 1):
         S('_tb', V('kb_top') - 4)
@@ -1104,11 +1106,11 @@ def app_paint():
         with If(item(L('ps_s'), V('_pi')) == 1):
             pen_up()
             pen_color(item(L('paint_hex'), item(L('ps_c'), V('_pi'))))
-            pen_size(item(L('ps_w'), V('_pi')))
-            goto(item(L('ps_x'), V('_pi')) - 320, 180 - item(L('ps_y'), V('_pi')))
+            pen_size(item(L('ps_w'), V('_pi')) * V('gs'))
+            goto(V('gox') + item(L('ps_x'), V('_pi')) * V('gs') - 320, 180 - V('goy') - item(L('ps_y'), V('_pi')) * V('gs'))
             pen_down()
         with Else():
-            goto(item(L('ps_x'), V('_pi')) - 320, 180 - item(L('ps_y'), V('_pi')))
+            goto(V('gox') + item(L('ps_x'), V('_pi')) * V('gs') - 320, 180 - V('goy') - item(L('ps_y'), V('_pi')) * V('gs'))
     pen_up()
     # canvas input: a press that starts in the canvas draws
     P.hit(PX0, PY0, PW, PH)
@@ -1133,7 +1135,7 @@ def app_paint():
             S('pt_last_x', V('_ppx'))
             S('pt_last_y', V('_ppy'))
     # toolbar
-    P.rect(0, SB + 37, 72, H, V('c_surf'))
+    P.rect(0, SB + 37, 72, H - SB - 37, V('c_surf'))
     P.rect(72, SB + 37, 1, H, V('c_div'))
     S('_pk', 0)
     with repeat(10):
@@ -1337,7 +1339,7 @@ def app_settings():
         P.settings_pin()
     with Else():
         S('clip0', SB + 37)
-        P.scroll_update(412)
+        P.scroll_update(544)
         S('_y', SB + 44 - V('scroll'))
         # --- Display
         P.set_sec('DISPLAY', V('_y'))
@@ -1392,28 +1394,44 @@ def app_settings():
         P.switch(W - 74, V('_y') + 378, V('bt'))
         with If(V('tap_o') == 1):
             S('bt', 1 - V('bt'))
+        # --- Navigation
+        P.set_sec('NAVIGATION', V('_y') + 428)
+        P.set_row('Navigation style', V('_y') + 450)
+        for (lbl, val, x) in (('Gesture bar', 1, W - 250), ('3 buttons', 0, W - 132)):
+            P.btn(x, V('_y') + 458, 112, 28, lbl, 1 if False else 0)
+            with If(V('tap_o') == 1):
+                S('navmode', val)
+            with If(V('navmode') == val):
+                P.btn(x, V('_y') + 458, 112, 28, lbl, 1)
+        P.set_row('Animation speed', V('_y') + 500)
+        for (lbl, val, x) in (('Fast', 6, W - 250), ('Normal', 10, W - 170), ('Slow', 16, W - 90)):
+            P.btn(x, V('_y') + 508, 72, 28, lbl, 0)
+            with If(V('tap_o') == 1):
+                S('anim_n', val)
+            with If(V('anim_n') == val):
+                P.btn(x, V('_y') + 508, 72, 28, lbl, 1)
         # --- Security
-        P.set_sec('SECURITY', V('_y') + 428)
-        P.set_row('Screen lock PIN', V('_y') + 450)
+        P.set_sec('SECURITY', V('_y') + 560)
+        P.set_row('Screen lock PIN', V('_y') + 582)
         with If(V('pin') == ''):
-            P.text_r(W - 140, V('_y') + 472, 'Off', 13, 0, V('tx2'))
-            P.btn(W - 124, V('_y') + 456, 100, 32, 'Set PIN', 1)
+            P.text_r(W - 140, V('_y') + 604, 'Off', 13, 0, V('tx2'))
+            P.btn(W - 124, V('_y') + 588, 100, 32, 'Set PIN', 1)
             with If(V('tap_o') == 1):
                 S('view', 1)
                 S('pin_in', '')
         with Else():
-            P.text_r(W - 140, V('_y') + 472, 'On', 13, 0, V('tx2'))
-            P.btn(W - 124, V('_y') + 456, 100, 32, 'Remove', 2)
+            P.text_r(W - 140, V('_y') + 604, 'On', 13, 0, V('tx2'))
+            P.btn(W - 124, V('_y') + 588, 100, 32, 'Remove', 2)
             with If(V('tap_o') == 1):
                 S('pin', '')
                 P.notify('PIN removed')
         # --- Storage / about
-        P.set_sec('SYSTEM', V('_y') + 506)
-        P.set_row('Storage', V('_y') + 528)
-        P.text_r(W - 30, V('_y') + 550, join(listlen(L('fs_id')), ' items'), 13, 0, V('tx2'))
-        P.set_row('About', V('_y') + 578)
-        P.text_r(W - 30, V('_y') + 600, 'eOS 1.0 for PenguinMod', 13, 0, V('tx2'))
-        P.btn(W / 2 - 80, V('_y') + 634, 160, 36, 'Factory reset', 2)
+        P.set_sec('SYSTEM', V('_y') + 638)
+        P.set_row('Storage', V('_y') + 660)
+        P.text_r(W - 30, V('_y') + 682, join(listlen(L('fs_id')), ' items'), 13, 0, V('tx2'))
+        P.set_row('About', V('_y') + 710)
+        P.text_r(W - 30, V('_y') + 732, 'eOS 1.0 for PenguinMod', 13, 0, V('tx2'))
+        P.btn(W / 2 - 80, V('_y') + 766, 160, 36, 'Factory reset', 2)
         with If(V('tap_o') == 1):
             P.ask('Reset eOS?', 'All files, settings and drawings will be erased.', 'Reset', 2, 0)
         P.header('Settings')

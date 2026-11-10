@@ -36,11 +36,11 @@ const expect = (n, c, e = '') => { console.log((c ? 'PASS ' : 'FAIL ') + n + (c 
   expect('symbol page', await V('kb_page') === 1);
   await h.shot(OUT + 'v_sym.png');
   await h.click(60, 202 + 112); await h.frames(1);
-  await h.click(320, 346); await h.frames(3);
+  await h.click(320, 346); await h.frames(14);
   // dark mode tour
   await h.setVar('dark', 1); await h.setVar('accent', 3);
   await h.page.evaluate(() => {}); await h.frames(2);
-  await h.click(320, 346); await h.frames(3);
+  await h.click(320, 346); await h.frames(14);
   // force theme refresh via QS dark toggle twice
   await h.click(320, 10); await h.frames(3); await h.click(34 + 148 + 68, 68); await h.frames(2); await h.click(34 + 148 + 68, 68); await h.frames(2);
   await h.click(320, 300); await h.frames(3);
@@ -48,7 +48,7 @@ const expect = (n, c, e = '') => { console.log((c ? 'PASS ' : 'FAIL ') + n + (c 
   const names = ['files', 'notes', 'calc', 'clock', 'term', 'paint', 'snake', 'settings'];
   for (const i of [1, 3, 4, 6, 7, 8]) {
     await h.click(...icon(i)); await h.frames(14); await h.shot(OUT + `v_dark_${names[i - 1]}.png`);
-    await h.click(320, 346); await h.frames(3);
+    await h.click(320, 346); await h.frames(14);
   }
   console.log('dark', await V('dark'), 'accent', await V('accent'));
   await h.close(); console.log(fails ? fails + ' FAILED' : 'ALL OK');

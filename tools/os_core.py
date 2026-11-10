@@ -50,7 +50,7 @@ APP_FILES, APP_NOTES, APP_CALC, APP_CLOCK, APP_TERM, APP_PAINT, APP_SNAKE, APP_S
 for _n, _v in [
     ('screen', 0), ('app', 0), ('view', 0), ('frame_n', 0),
     ('mx', 0), ('my', 0), ('md', 0), ('mdp', 0), ('press', 0), ('rel', 0), ('px', 0), ('py', 0), ('moved', 0),
-    ('cur_layer', 0), ('act_layer', 0), ('clip0', SB), ('clip1', H - NB), ('gh', 0),
+    ('gs', 1), ('gox', 0), ('goy', 0), ('cur_layer', 0), ('act_layer', 0), ('clip0', SB), ('clip1', H - NB), ('gh', 0),
     ('hit_o', 0), ('tap_o', 0), ('tw_o', 0), ('sl_o', 0), ('drag_id', 0),
     ('scroll', 0), ('sc_on', 0), ('sc_y0', 0), ('sc_s0', 0),
     # settings (persist inside the project)
@@ -80,8 +80,8 @@ def rect(x, y, w, h, c):
     with If((w > 0) & (h > 0)):
         costume(c + 0)
         effect('GHOST', V('gh'))
-        set_stretch(w, h)
-        goto(x + w / 2 - 320, 180 - y - h / 2)
+        set_stretch(w * V('gs'), h * V('gs'))
+        goto(V('gox') + (x + w / 2) * V('gs') - 320, 180 - V('goy') - (y + h / 2) * V('gs'))
         stamp()
 
 
@@ -90,8 +90,8 @@ def circle(cx, cy, d, c):
     with If(d > 0):
         costume(c + NP)
         effect('GHOST', V('gh'))
-        set_stretch(d, d)
-        goto(cx - 320, 180 - cy)
+        set_stretch(d * V('gs'), d * V('gs'))
+        goto(V('gox') + cx * V('gs') - 320, 180 - V('goy') - cy * V('gs'))
         stamp()
 
 
@@ -122,7 +122,7 @@ def text(x, y, s, size, bold, tint, maxw):
         S('_pf', 'g')
     effect('BRIGHTNESS', tint)
     effect('GHOST', V('gh'))
-    set_stretch(size, size)
+    set_stretch(size * V('gs'), size * V('gs'))
     S('_tx', x)
     S('_ti', 1)
     S('_td', 0)
@@ -137,7 +137,7 @@ def text(x, y, s, size, bold, tint, maxw):
             with If((maxw > 0) & (V('_tx') + V('_tw') > x + maxw)):
                 S('_td', 1)
             with Else():
-                goto(V('_tx') - 320, 180 - y - size * 0.36)
+                goto(V('gox') + V('_tx') * V('gs') - 320, 180 - V('goy') - (y + size * 0.36) * V('gs'))
                 stamp()
                 change(V('_tx'), V('_tw'))
         inc('_ti')
@@ -184,7 +184,7 @@ def para(x, y, w, s, size, lh, tint, draw):
     S('_pi', 1)
     S('_pn', length(s))
     effect('BRIGHTNESS', tint)
-    set_stretch(size, size)
+    set_stretch(size * V('gs'), size * V('gs'))
     with until(V('_pi') > V('_pn')):
         S('_pc', letter(V('_pi'), s))
         with If(V('_pc') == '\n'):
@@ -202,7 +202,7 @@ def para(x, y, w, s, size, lh, tint, draw):
                 S('_px', x)
                 change(V('_py'), lh)
             with If((draw == 1) & (V('_pcs') == 1)):
-                goto(V('_px') - 320, 180 - V('_py') - size * 0.36)
+                goto(V('gox') + V('_px') * V('gs') - 320, 180 - V('goy') - (V('_py') + size * 0.36) * V('gs'))
                 stamp()
             change(V('_px'), V('_pw'))
         inc('_pi')
@@ -216,8 +216,8 @@ def icon(name, cx, cy, size, tint):
     costume(join('i_', name))
     effect('BRIGHTNESS', tint)
     effect('GHOST', V('gh'))
-    set_stretch(size * 100 / 24, size * 100 / 24)
-    goto(cx - 320, 180 - cy)
+    set_stretch(size * 100 / 24 * V('gs'), size * 100 / 24 * V('gs'))
+    goto(V('gox') + cx * V('gs') - 320, 180 - V('goy') - cy * V('gs'))
     stamp()
     effect('BRIGHTNESS', 0)
 
@@ -226,8 +226,8 @@ def icon(name, cx, cy, size, tint):
 def appicon(name, cx, cy, size):
     costume(join('a_', name))
     effect('GHOST', V('gh'))
-    set_stretch(size, size)
-    goto(cx - 320, 180 - cy)
+    set_stretch(size * V('gs'), size * V('gs'))
+    goto(V('gox') + cx * V('gs') - 320, 180 - V('goy') - cy * V('gs'))
     stamp()
 
 
@@ -237,8 +237,8 @@ def pillkey(cx, cy, tint, gh_):
     costume('k_pill')
     effect('BRIGHTNESS', tint)
     effect('GHOST', gh_)
-    set_stretch(100, 100)
-    goto(cx - 320, 180 - cy)
+    set_stretch(100 * V('gs'), 100 * V('gs'))
+    goto(V('gox') + cx * V('gs') - 320, 180 - V('goy') - cy * V('gs'))
     stamp()
     effect('BRIGHTNESS', 0)
     effect('GHOST', 0)

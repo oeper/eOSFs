@@ -4,7 +4,8 @@ from os_core import *
 
 KB_H = 130
 
-for _n, _v in [('boot_t', 0), ('pin_in', ''), ('pin_show', 0), ('back_o', 0), ('kb_k', ''), ('_kbx', 0),
+for _n, _v in [('navmode', 1), ('anim_n', 10), ('gmode', 0), ('gtype', 0), ('gt', 0), ('ga_s', 1), ('ga_cx', W / 2),
+               ('ga_cy', H / 2), ('gx0', 0), ('boot_t', 0), ('pin_in', ''), ('pin_show', 0), ('back_o', 0), ('kb_k', ''), ('_kbx', 0),
                ('pad_o', ''), ('rc_n', 0), ('qs_h', 0), ('lock_t', 0)]:
     V(_n, _v)
 
@@ -162,6 +163,7 @@ def launch(a, ox, oy):
     S('open_x', ox)
     S('open_y', oy)
     S('open_t', 0)
+    S('gmode', 0)
     with If(indexof(L('rec'), a) == 0):
         P.app_init(a)
     with Else():
@@ -170,16 +172,74 @@ def launch(a, ox, oy):
     S('screen', SCR_APP)
 
 
+@proc('s cx cy')
+def set_tf(s_, cx, cy):
+    """draw everything that follows scaled by s_ and centred on (cx, cy)"""
+    S('gs', s_)
+    S('gox', cx - W / 2 * s_)
+    S('goy', cy - H / 2 * s_)
+
+
 @proc('')
-def draw_open_anim():
-    """grow an app-coloured rectangle out of the tapped icon"""
-    S('_ot', V('open_t') / 9)
-    S('_oe', 1 - (1 - V('_ot')) * (1 - V('_ot')))
-    P.rrect(V('open_x') * (1 - V('_oe')), (V('open_y')) * (1 - V('_oe')),
-            62 + (W - 62) * V('_oe'), 62 + (H - 62) * V('_oe'), 14 * (1 - V('_oe')) + 2, V('c_bg'))
-    P.appicon(item(L('app_icon'), V('app')), V('open_x') + 31 + (W / 2 - V('open_x') - 31) * V('_oe'),
-              V('open_y') + 31 + (H / 2 - V('open_y') - 31) * V('_oe'), 62 + 40 * V('_oe'))
-    inc('open_t')
+def close_app_anim():
+    """shrink the foreground app into its home-screen icon, then go home"""
+    with If(V('gmode') != 1):
+        S('ga_s', 1)
+        S('ga_cx', W / 2)
+        S('ga_cy', H / 2)
+    S('kb_open', 0)
+    S('qs_open', 0)
+    S('gmode', 2)
+    S('gt', 0)
+
+
+@proc('')
+def gesture_update():
+    """gesture-bar navigation (navmode 1): drag the bar up to shrink/close the app, edge-swipe for back"""
+    with If((V('navmode') == 1) & (V('dlg') == 0) & (V('screen') >= SCR_HOME) & (V('gmode') <= 1)):
+        with If(V('press') == 1):
+            S('gtype', 0)
+            with If(V('my') >= H - NB):
+                S('gtype', 1)
+                S('gx0', V('mx'))
+                S('press', 0)
+                S('moved', 1)
+            with Else():
+                with If((V('mx') < 14) | (V('mx') > W - 14)):
+                    S('gtype', 2)
+                    S('press', 0)
+                    S('moved', 1)
+        with If((V('gtype') == 1) & (V('md') == 1) & (V('screen') == SCR_APP) & (V('open_t') >= V('anim_n'))):
+            S('gmode', 1)
+            S('kb_open', 0)
+            S('qs_open', 0)
+            S('_gd', clamp((H - V('my')) / H, 0, 1))
+            S('ga_s', clamp(1 - V('_gd') * 0.95, 0.22, 1))
+            S('ga_cx', W / 2 + (V('mx') - V('gx0')))
+            S('ga_cy', V('my') - V('ga_s') * H / 2 + 10)
+        with If((V('gtype') != 0) & (V('rel') == 1)):
+            S('rel', 0)
+            with If(V('gtype') == 1):
+                with If(V('gmode') == 1):
+                    with If(V('my') < H * 0.74):
+                        S('gmode', 2)
+                        S('gt', 0)
+                    with Else():
+                        with If(V('ga_s') > 0.97):
+                            S('gmode', 0)
+                        with Else():
+                            S('gmode', 3)
+                            S('gt', 0)
+                S('_gs', V('screen'))
+                with If((V('_gs') == SCR_HOME) & (V('py') - V('my') > 60)):
+                    P.nav_recents()
+                with If((V('_gs') == SCR_REC) & (V('py') - V('my') > 60)):
+                    P.nav_home()
+            with If((V('gtype') == 2) & (abs_(V('mx') - V('px')) > 40)):
+                P.nav_back()
+            S('gtype', 0)
+    with If(V('md') == 0):
+        S('gtype', 0)
 
 
 # --------------------------------------------------------------- recents ---
@@ -215,8 +275,7 @@ def draw_recents():
             list_delete(L('rec'), V('_ri'))
             S('_rt', 0)
         with If(V('_rt') == 1):
-            P.launch(V('_rapp'), V('_rx'), V('_ry'))
-            S('open_t', 99)
+            P.launch(V('_rapp'), V('_rx') - 5, V('_ry') - 7)
     with If(V('rc_n') > 0):
         P.btn(W / 2 - 60, 296, 120, 30, 'Close all', 0)
         with If(V('tap_o') == 1):
@@ -262,18 +321,27 @@ def navbar(mode):
     with Else():
         P.rect(0, H - NB, W, NB, V('c_bg'))
     S('_ny', H - NB / 2)
-    P.icon('back', W / 2 - 100, V('_ny'), 18, V('_nv'))
-    P.icon('home', W / 2, V('_ny'), 18, V('_nv'))
-    P.icon('recents', W / 2 + 100, V('_ny'), 18, V('_nv'))
-    P.tapr(W / 2 - 150, H - NB, 100, NB)
-    with If(V('tap_o') == 1):
-        P.nav_back()
-    P.tapr(W / 2 - 50, H - NB, 100, NB)
-    with If(V('tap_o') == 1):
-        P.nav_home()
-    P.tapr(W / 2 + 50, H - NB, 100, NB)
-    with If(V('tap_o') == 1):
-        P.nav_recents()
+    with If(V('navmode') == 1):
+        S('_pc', pal('white'))
+        with If((mode == 1) & (V('dark') == 0)):
+            S('_pc', pal('black'))
+        S('_pw', 110)
+        with If(V('gtype') == 1):
+            S('_pw', 140)
+        P.rrect(W / 2 - V('_pw') / 2, H - 12, V('_pw'), 5, 2.5, V('_pc'))
+    with Else():
+        P.icon('back', W / 2 - 100, V('_ny'), 18, V('_nv'))
+        P.icon('home', W / 2, V('_ny'), 18, V('_nv'))
+        P.icon('recents', W / 2 + 100, V('_ny'), 18, V('_nv'))
+        P.tapr(W / 2 - 150, H - NB, 100, NB)
+        with If(V('tap_o') == 1):
+            P.nav_back()
+        P.tapr(W / 2 - 50, H - NB, 100, NB)
+        with If(V('tap_o') == 1):
+            P.nav_home()
+        P.tapr(W / 2 + 50, H - NB, 100, NB)
+        with If(V('tap_o') == 1):
+            P.nav_recents()
 
 
 @proc('')
@@ -281,8 +349,12 @@ def nav_home():
     P.store_save()
     S('kb_open', 0)
     S('qs_open', 0)
-    S('screen', SCR_HOME)
-    S('open_t', 99)
+    with If((V('screen') == SCR_APP) & (V('gmode') == 0) & (V('open_t') >= V('anim_n'))):
+        P.close_app_anim()
+    with Else():
+        S('screen', SCR_HOME)
+        S('gmode', 0)
+        S('open_t', 99)
 
 
 @proc('')
@@ -309,7 +381,7 @@ def nav_back():
                 S('back_o', 0)
                 P.app_back()
                 with If(V('back_o') == 0):
-                    S('screen', SCR_HOME)
+                    P.close_app_anim()
 
 
 # --------------------------------------------------------------- keyboard --
@@ -592,22 +664,56 @@ def draw_toast():
 # ------------------------------------------------------------------ frame ---
 @proc('')
 def draw_app():
-    with If(V('open_t') < 10):
+    S('_tfm', 0)
+    with If((V('open_t') < V('anim_n')) | (V('gmode') != 0)):
+        S('_tfm', 1)
+    with If(V('_tfm') == 1):
         S('press', 0)
         S('rel', 0)
         P.draw_home()
-        P.draw_open_anim()
-    with Else():
-        S('clip0', SB)
-        S('clip1', H - NB)
-        P.rect(0, 0, W, H, V('c_bg'))
-        P.app_draw()
-        S('cur_layer', 0)
+        S('_ix', 93 + ((V('app') - 1) % 4) * 130 + 31)
+        S('_iy', 146 + floor((V('app') - 1) / 4) * 98 + 31)
+        with If(V('gmode') == 1):
+            P.set_tf(V('ga_s'), V('ga_cx'), V('ga_cy'))
+        with Else():
+            with If(V('gmode') == 2):
+                S('_t', V('gt') / V('anim_n'))
+                S('_e', 1 - (1 - V('_t')) * (1 - V('_t')))
+                P.set_tf(V('ga_s') + (0.11 - V('ga_s')) * V('_e'), V('ga_cx') + (V('_ix') - V('ga_cx')) * V('_e'),
+                         V('ga_cy') + (V('_iy') - V('ga_cy')) * V('_e'))
+                inc('gt')
+                with If(V('gt') > V('anim_n')):
+                    S('gmode', 0)
+                    S('screen', SCR_HOME)
+                    S('open_t', 99)
+            with Else():
+                with If(V('gmode') == 3):
+                    S('_t', V('gt') / 6)
+                    S('_e', 1 - (1 - V('_t')) * (1 - V('_t')))
+                    P.set_tf(V('ga_s') + (1 - V('ga_s')) * V('_e'), V('ga_cx') + (W / 2 - V('ga_cx')) * V('_e'),
+                             V('ga_cy') + (H / 2 - V('ga_cy')) * V('_e'))
+                    inc('gt')
+                    with If(V('gt') > 6):
+                        S('gmode', 0)
+                with Else():
+                    S('_t', V('open_t') / V('anim_n'))
+                    S('_e', 1 - (1 - V('_t')) * (1 - V('_t')))
+                    P.set_tf(0.11 + 0.89 * V('_e'), V('open_x') + 31 + (W / 2 - V('open_x') - 31) * V('_e'),
+                             V('open_y') + 31 + (H / 2 - V('open_y') - 31) * V('_e'))
+                    inc('open_t')
+    S('clip0', SB)
+    S('clip1', H - NB)
+    P.rrect(0, 0, W, H, (1 - V('gs')) * 60, V('c_bg'))
+    P.app_draw()
+    P.set_tf(1, W / 2, H / 2)
+    S('cur_layer', 0)
 
 
 @proc('')
 def frame():
     P.input_()
+    P.set_tf(1, W / 2, H / 2)
+    P.gesture_update()
     P.time_update()
     P.bg_tasks()
     inc('frame_n')
@@ -620,6 +726,8 @@ def frame():
         S('act_layer', 1)
     with If(V('dlg') == 1):
         S('act_layer', 2)
+    with If((V('gmode') != 0) | ((V('screen') == SCR_APP) & (V('open_t') < V('anim_n')))):
+        S('act_layer', 3)
     S('cur_layer', 0)
     S('clip0', SB)
     S('clip1', H - NB)
@@ -635,7 +743,7 @@ def frame():
         (SCR_REC, lambda: P.draw_recents()),
     ])
     with If(V('screen') > SCR_LOCK):
-        with If((V('screen') == SCR_APP) & (V('open_t') >= 10)):
+        with If((V('screen') == SCR_APP) & (V('open_t') >= V('anim_n')) & (V('gmode') == 0)):
             S('_sm', 1)
         with Else():
             S('_sm', 0)
@@ -688,6 +796,8 @@ def make_main_script():
         S('pin_show', 0)
         S('pin_in', '')
         S('open_t', 99)
+        S('gmode', 0)
+        S('gtype', 0)
         S('toast_t', 0)
         S('app', 0)
         list_clear(L('rec'))
