@@ -331,7 +331,7 @@ def bg_tasks():
             S('tm_flash', 90)
             P.notify('Timer finished')
     with If(V('tm_flash') > 0):
-        inc('tm_flash', -1)
+        change(V('tm_flash'), 0 - V('fsc'))
 
 
 # ================================================================ editor ====
@@ -371,7 +371,7 @@ def editor():
         P.scroll_update(V('_ov'))                           # reading: drag to scroll
         S('_eoff', 0 - V('scroll'))
     P.para(24, SB + 56 + V('_eoff'), W - 48, V('_et'), 14, 20, V('tx'), 1)
-    with If(((V('frame_n') % 30) < 18) & (V('kb_open') == 1)):
+    with If(((V('fclk') % 30) < 18) & (V('kb_open') == 1)):
         P.rect(V('ed_px') + 1, SB + 56 + V('_eoff') + V('ed_py') - 8, 2, 17, V('c_acc'))
     with If(V('_et') == ''):
         P.text(24, SB + 56, 'Empty file - tap here to start typing', 14, 0, V('tx2'), 0)
@@ -603,7 +603,7 @@ def app_calc():
     S('_cx0', W / 2 - 180)
     P.rrect(V('_cx0'), SB + 42, 360, 60, 14, V('c_surf'))
     P.text_r(V('_cx0') + 344, SB + 56, V('calc_h'), 12, 0, V('tx2'))
-    inc('cb_t')
+    change(V('cb_t'), V('fsc'))
     P.ease(V('cb_t') / 7)
     S('_cs', 38 * (1 + 0.12 * (1 - V('ez_o'))))
     with If(length(V('calc_d')) > 9):
@@ -680,7 +680,7 @@ def app_clock():
             S('_tabt', V('_tx0') + 30)
         with Else():
             P.text_c(V('_tx0') + 70, SB + 54, item(L('clk_tabs'), V('_tb')), 14, 0, V('tx2'))
-    S('tab_x', V('tab_x') + (V('_tabt') - V('tab_x')) * 0.3)
+    S('tab_x', V('tab_x') + (V('_tabt') - V('tab_x')) * V('lk30'))
     P.rrect(V('tab_x'), SB + 68, 80, 3, 1.5, V('c_acc'))
     with If(V('clk_tab') == 1):
         P.clock_face(W / 2 - 150, 214, 102)
@@ -1092,7 +1092,7 @@ def app_term():
     S('_cxx', 10 + V('tw_o'))
     P.text(V('_cxx'), V('_ty'), V('ti'), 12, 0, 0, W - 40 - V('tw_o'))
     P.tw(V('ti'), 12, 0)
-    with If((V('frame_n') % 30) < 18):
+    with If((V('fclk') % 30) < 18):
         P.rect(V('_cxx') + V('tw_o') + 1, V('_ty') - 7, 7, 14, pal('white'))
 
 
@@ -1156,7 +1156,7 @@ def app_paint():
     # toolbar
     P.rect(0, SB + 37, 72, H - SB - 37, V('c_surf'))
     P.rect(72, SB + 37, 1, H, V('c_div'))
-    inc('pt_pop')
+    change(V('pt_pop'), V('fsc'))
     P.ease(V('pt_pop') / 8)
     S('_pk', 0)
     with repeat(10):
@@ -1303,14 +1303,14 @@ def app_snake():
             S('px', V('mx'))
             S('py', V('my'))
     with If(V('sn_state') == 1):
-        inc('sn_t')
+        change(V('sn_t'), V('fsc'))
         with If(V('sn_t') >= V('sn_spd')):
             S('sn_t', 0)
             P.snake_step()
     # board
     P.rrect(SN_X0 - 3, SN_Y0 - 3, SN_COLS * SN_C + 6, SN_ROWS * SN_C + 6, 10, V('c_div'))
     P.rrect(SN_X0, SN_Y0, SN_COLS * SN_C, SN_ROWS * SN_C, 7, V('c_surf'))
-    P.circle(SN_X0 + V('sn_fx') * SN_C + SN_C / 2, SN_Y0 + V('sn_fy') * SN_C + SN_C / 2, SN_C - 5 + 3 * sin(V('frame_n') * 14), pal('red'))
+    P.circle(SN_X0 + V('sn_fx') * SN_C + SN_C / 2, SN_Y0 + V('sn_fy') * SN_C + SN_C / 2, SN_C - 5 + 3 * sin(V('fclk') * 14), pal('red'))
     S('_k', 0)
     with repeat(listlen(L('sn_x'))):
         inc('_k')
@@ -1337,7 +1337,7 @@ def app_snake():
         P.rrect(SN_X0 + 76, SN_Y0 + 208, 280, 32, 16, pal('black'))
         P.text_c(SN_X0 + 216, SN_Y0 + 224, 'Swipe or press an arrow to start', 12, 1, 0)
     with If(V('sn_state') == 2):
-        inc('sn_pop')
+        change(V('sn_pop'), V('fsc'))
         P.ease(V('sn_pop') / 8)
         P.set_tf(0.6 + 0.4 * V('ez_o'), SN_X0 + 216, SN_Y0 + 126)
         P.rrect(SN_X0 + 76, SN_Y0 + 78, 280, 96, 16, pal('black'))

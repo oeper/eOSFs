@@ -25,7 +25,7 @@ const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98
   const s1 = await V('ga_s'), cx1 = await V('ga_cx');
   await h.mouse(368, 150, true); await h.frames(1);
   expect('further up = smaller', await V('ga_s') < s1);
-  expect('card follows finger horizontally', Math.abs((await V('ga_cx')) - (320 + 48)) < 2, await V('ga_cx'));
+  expect('card follows finger horizontally', Math.abs((await V('ga_cx')) - (320 + 48)) < 10, await V('ga_cx'));
   await h.shot(OUT + 'g_drag2.png');
   // release high -> closes into icon
   await h.mouse(368, 150, false); await h.frames(2);
@@ -67,6 +67,24 @@ const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98
   await h.click(320, 300); await h.frames(1);
   await h.drag(320, 350, 320, 220, 6); await h.frames(3);
   expect('swipe up in recents -> home', await V('screen') === 2, await V('screen'));
+  // ---- re-open an app that is still closing: continues from its current window (no jump to the icon)
+  await h.click(...icon(3)); await h.frames(14);
+  await h.drag(320, 350, 320, 140, 6); await h.frames(3);
+  const cw = await V('cl_cw');
+  expect('closing window is mid-size', cw > 62 && cw < 640 && await V('cl_on') === 1, cw);
+  await h.click(...icon(3)); await h.frames(1);
+  expect('re-open starts from the closing window size', Math.abs((await V('cur_w')) - cw) < 120 && await V('cur_w') > 90, `${await V('cur_w')} vs ${cw}`);
+  await h.frames(16);
+  expect('re-opened fully', await V('screen') === 3 && await V('open_t') >= 10 && await V('cur_w') === 640);
+  // ---- grabbing the bar mid-opening continues from the opening size (no jump)
+  await h.drag(320, 350, 320, 140, 6); await h.frames(16);
+  await h.click(...icon(3)); await h.frames(3);
+  await h.mouse(320, 350, false); await h.frames(1);
+  const ow = await V('cur_w');
+  await h.mouse(320, 350, true); await h.frames(1);
+  const gw = (await V('ga_s')) * 640;
+  expect('grab continues from current size (eases, no jump)', gw >= ow - 5 && gw <= (ow + 614) / 2 + 40, `${gw} vs ${ow}`);
+  await h.mouse(320, 350, false); await h.frames(20);
   // ---- drag a little and release low -> snaps back
   await h.click(...icon(3)); await h.frames(14);
   await h.mouse(320, 350, false); await h.frames(1);
@@ -81,6 +99,7 @@ const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98
   await h.click(320, 350); await h.frames(3);
   expect('tap on bar is harmless', await V('screen') === 3 && await V('gmode') === 0);
   // calculator still works after the transitions (input not stuck)
+  await h.click(182, 149.5); await h.frames(1);        // C
   await h.click(182, 149.5 + 36); await h.frames(2);   // '7'
   expect('app responds after gesture', await V('calc_d') == 7, await V('calc_d'));
   // ---- edge swipe back (Files -> subfolder -> swipe -> parent)

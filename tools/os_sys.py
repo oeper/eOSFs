@@ -1,10 +1,13 @@
+import math
 """eOS system UI: boot, lock, home, status/nav bars, keyboard, quick settings, dialogs, recents, main loop."""
 from sb3 import *
 from os_core import *
 
 KB_H = 130
 
-for _n, _v in [('g_still', 0), ('g_rec', 0), ('g_px', 0), ('g_py', 0), ('cl_w0', W), ('cl_h0', H), ('cl_p0', 1), ('cur_w', W), ('cur_h', H), ('cur_p', 1), ('cl_on', 0), ('cl_app', 0), ('cl_t', 0), ('cl_full', 1), ('cl_s0', 1), ('cl_x0', W / 2), ('cl_y0', H / 2),
+for _n, _v in [('rscroll', 0), ('rs_on', 0), ('rs_x0', 0), ('rs_s0', 0), ('rc_dis_app', 0), ('rc_dis_t', 0), ('fsc', 1), ('last_t', 0), ('fclk', 0), ('last_save', 0), ('lk30', 0.3), ('lk35', 0.35), ('lk50', 0.5),
+               ('op_x0', 0), ('op_y0', 0), ('op_w0', 62), ('op_h0', 62), ('op_p0', 0), ('cl_cw', 62), ('cl_ch', 62),
+               ('cl_ccx', 0), ('cl_ccy', 0), ('cl_cp', 0), ('g_still', 0), ('g_rec', 0), ('g_px', 0), ('g_py', 0), ('cl_w0', W), ('cl_h0', H), ('cl_p0', 1), ('cur_w', W), ('cur_h', H), ('cur_p', 1), ('cl_on', 0), ('cl_app', 0), ('cl_t', 0), ('cl_full', 1), ('cl_s0', 1), ('cl_x0', W / 2), ('cl_y0', H / 2),
                ('cur_s', 1), ('cur_cx', W / 2), ('cur_cy', H / 2), ('navmode', 1), ('anim_n', 10), ('gmode', 0), ('gtype', 0), ('gt', 0), ('ga_s', 1), ('ga_cx', W / 2),
                ('ga_cy', H / 2), ('gx0', 0), ('boot_t', 0), ('pin_in', ''), ('pin_show', 0), ('back_o', 0), ('kb_k', ''), ('_kbx', 0),
                ('pad_o', ''), ('rc_n', 0), ('qs_h', 0), ('lock_t', 0)]:
@@ -22,7 +25,7 @@ def draw_boot():
     P.text_c(W / 2, 196, 'PenguinMod edition', 12, 0, -45)
     P.rrect(W / 2 - 80, 250, 160, 6, 3, pal('dgray'))
     P.rrect(W / 2 - 80, 250, 160 * V('boot_t') / 70, 6, 3, pal('white'))
-    inc('boot_t')
+    change(V('boot_t'), V('fsc'))
     with If(V('boot_t') > 70):
         S('screen', SCR_LOCK)
         S('lock_t', 0)
@@ -36,7 +39,7 @@ def draw_lock():
         S('gh', 80)
         P.rect(0, 0, W, H, pal('black'))
         S('gh', 0)
-    inc('lock_t')
+    change(V('lock_t'), V('fsc'))
     with If(V('pin_show') == 0):
         P.text_c(W / 2, 112, V('tstr'), 72, 1, 0)
         P.tw(V('tstr'), 72, 1)
@@ -168,17 +171,32 @@ def launch(a, ox, oy):
     with If((V('screen') == SCR_APP) & (V('open_t') < V('anim_n')) & (V('app') != a)):
         P.start_close(V('app'), V('cur_w'), V('cur_h'), V('cur_cx'), V('cur_cy'), V('cur_p'))      # previous app was still opening: let it shrink away
     S('app', a)
+    S('op_x0', ox + 31)
+    S('op_y0', oy + 31)
+    S('op_w0', 62)
+    S('op_h0', 62)
+    S('op_p0', 0)
     with If(V('cl_on') == 1):
-        with If(V('cl_app') == a):
+        with If((V('cl_app') == a) & (V('cl_full') == 1)):
+            S('op_x0', V('cl_ccx'))                  # re-opening an app that is still closing: continue from its window
+            S('op_y0', V('cl_ccy'))
+            S('op_w0', V('cl_cw'))
+            S('op_h0', V('cl_ch'))
+            S('op_p0', V('cl_cp'))
             S('cl_on', 0)
         with Else():
-            S('cl_full', 0)
+            with If(V('cl_app') == a):
+                S('cl_on', 0)
+            with Else():
+                S('cl_full', 0)
     S('open_t', 0)
     S('gmode', 0)
     with If(indexof(L('rec'), a) == 0):
         P.app_init(a)
     with Else():
         list_delete(L('rec'), indexof(L('rec'), a))
+        S('view', item(L('app_view'), a))
+        S('scroll', item(L('app_scroll'), a))
     list_add(L('rec'), a)
     S('screen', SCR_APP)
 
@@ -258,10 +276,14 @@ def draw_closing():
             S('_cfa', 0)
             S('_cia', 1)
         S('card_app', V('cl_app'))
-        P.draw_card(V('cl_w0') + (62 - V('cl_w0')) * V('_ce'), V('cl_h0') + (62 - V('cl_h0')) * V('_ce'),
-                    V('cl_x0') + (V('_cix') - V('cl_x0')) * V('_ce'), V('cl_y0') + (V('_ciy') - V('cl_y0')) * V('_ce'),
-                    V('_cfa'), V('_cia'), 16 * (1 - V('_cp') * V('_cp') * V('_cp')))
-        inc('cl_t')
+        S('cl_cw', V('cl_w0') + (62 - V('cl_w0')) * V('_ce'))
+        S('cl_ch', V('cl_h0') + (62 - V('cl_h0')) * V('_ce'))
+        S('cl_ccx', V('cl_x0') + (V('_cix') - V('cl_x0')) * V('_ce'))
+        S('cl_ccy', V('cl_y0') + (V('_ciy') - V('cl_y0')) * V('_ce'))
+        S('cl_cp', V('_cp'))
+        P.draw_card(V('cl_cw'), V('cl_ch'), V('cl_ccx'), V('cl_ccy'), V('_cfa'), V('_cia'),
+                    16 * (1 - V('_cp') * V('_cp') * V('_cp')))
+        change(V('cl_t'), V('fsc'))
         with If(V('cl_t') > V('anim_n')):
             S('cl_on', 0)
 
@@ -289,12 +311,16 @@ def gesture_update():
                     S('press', 0)
                     S('moved', 1)
         with If((V('gtype') == 1) & (V('md') == 1) & (V('screen') == SCR_APP)):
+            with If(V('gmode') != 1):
+                S('ga_s', V('cur_w') / W)             # grab the window exactly where it currently is
+                S('ga_cx', V('cur_cx'))
+                S('ga_cy', V('cur_cy'))
             S('open_t', 99)
             S('gmode', 1)
             S('kb_open', 0)
             S('qs_open', 0)
             with If(abs_(V('mx') - V('g_px')) + abs_(V('my') - V('g_py')) <= 3):
-                inc('g_still')
+                change(V('g_still'), V('fsc'))
             with Else():
                 S('g_still', 0)
                 S('g_rec', 0)
@@ -303,14 +329,15 @@ def gesture_update():
             with If((V('g_still') >= 7) & (V('my') > H * 0.42) & (V('my') < H * 0.82)):
                 S('g_rec', 1)                      # held halfway: show the other open apps
             with If(V('g_rec') == 1):
-                S('ga_s', V('ga_s') + (0.5 - V('ga_s')) * 0.3)
-                S('ga_cx', V('ga_cx') + (W / 2 - V('ga_cx')) * 0.3)
-                S('ga_cy', V('ga_cy') + (H / 2 - 14 - V('ga_cy')) * 0.3)
+                S('ga_s', V('ga_s') + (0.5 - V('ga_s')) * V('lk30'))
+                S('ga_cx', V('ga_cx') + (W / 2 - V('ga_cx')) * V('lk30'))
+                S('ga_cy', V('ga_cy') + (H / 2 - 14 - V('ga_cy')) * V('lk30'))
             with Else():
                 S('_gd', clamp((H - V('my')) / H, 0, 1))
-                S('ga_s', clamp(1 - V('_gd') * 0.95, 0.22, 1))
-                S('ga_cx', W / 2 + (V('mx') - V('gx0')))
-                S('ga_cy', V('my') - V('ga_s') * H / 2 + 10)
+                S('_gts', clamp(1 - V('_gd') * 0.95, 0.22, 1))
+                S('ga_s', V('ga_s') + (V('_gts') - V('ga_s')) * V('lk50'))       # ease toward the finger (no jump)
+                S('ga_cx', V('ga_cx') + (W / 2 + (V('mx') - V('gx0')) - V('ga_cx')) * V('lk50'))
+                S('ga_cy', V('ga_cy') + (V('my') - V('_gts') * H / 2 + 10 - V('ga_cy')) * V('lk50'))
         with If((V('gtype') != 0) & (V('rel') == 1)):
             S('rel', 0)
             S('_gs', V('screen'))
@@ -342,44 +369,91 @@ def gesture_update():
 
 
 # --------------------------------------------------------------- recents ---
+@proc('a cx cy w h fa')
+def draw_thumb(a, cx, cy, w, h, fa):
+    """live window of app `a` (its saved view/scroll) for the app switcher"""
+    S('_ta', V('app'))
+    S('_tv', V('view'))
+    S('_ts', V('scroll'))
+    S('app', a)
+    S('view', item(L('app_view'), a))
+    S('scroll', item(L('app_scroll'), a))
+    S('card_app', a)
+    P.draw_card(w, h, cx, cy, fa, 0, 12)
+    S('app', V('_ta'))
+    S('view', V('_tv'))
+    S('scroll', V('_ts'))
+
+
 @proc('')
 def draw_recents():
     S('cur_layer', 1)
     S('gh', 45)
     P.rect(0, 0, W, H, pal('black'))
     S('gh', 0)
-    S('rc_n', listlen(L('rec')))
-    with If(V('rc_n') == 0):
+    S('_rcn', listlen(L('rec')))
+    with If(V('_rcn') == 0):
         P.text_c(W / 2, 170, 'No recent apps', 16, 1, 0)
-    with Else():
-        P.text_c(W / 2, 54, 'Recent apps', 16, 1, 0)
-    S('_ri', V('rc_n') + 1)
-    S('_rk', 0)
-    with repeat(V('rc_n')):
-        inc('_ri', -1)
-        S('_rapp', item(L('rec'), V('_ri')))
-        S('_rx', 50 + (V('_rk') % 2) * 280)
-        P.stag(V('_rk'))
-        S('_ry', 76 + floor(V('_rk') / 2) * 58 + V('stag_o'))
-        inc('_rk')
-        # close button first (sits on top of the card)
-        P.tapr(V('_rx') + 214, V('_ry') + 8, 32, 32)
-        S('_rcl', V('tap_o'))
-        P.tapr(V('_rx'), V('_ry'), 260, 48)
-        S('_rt', V('tap_o'))
-        P.rrect(V('_rx'), V('_ry'), 260, 48, 12, V('c_surf'))
-        P.appicon(item(L('app_icon'), V('_rapp')), V('_rx') + 26, V('_ry') + 24, 34)
-        P.text(V('_rx') + 52, V('_ry') + 24, item(L('app_name'), V('_rapp')), 14, 1, V('tx'), 150)
-        P.icon('close', V('_rx') + 230, V('_ry') + 24, 16, V('tx2'))
-        with If(V('_rcl') == 1):
-            list_delete(L('rec'), V('_ri'))
-            S('_rt', 0)
-        with If(V('_rt') == 1):
-            P.launch(V('_rapp'), V('_rx') - 5, V('_ry') - 7)
-    with If(V('rc_n') > 0):
-        P.btn(W / 2 - 60, 296, 120, 30, 'Close all', 0)
+    # horizontal drag scroll
+    with If((V('press') == 1) & (V('my') > 60) & (V('my') < H - NB)):
+        S('rs_on', 1)
+        S('rs_x0', V('mx'))
+        S('rs_s0', V('rscroll'))
+    with If(V('md') == 0):
+        S('rs_on', 0)
+    with If((V('rs_on') == 1) & (V('moved') == 1)):
+        S('rscroll', V('rs_s0') - (V('mx') - V('rs_x0')))
+    S('_rmax', V('_rcn') * 250 - 210)
+    S('rscroll', clamp(V('rscroll'), 0, (V('_rmax') + abs_(V('_rmax'))) / 2))
+    S('_rcI', V('_rcn') + 1)
+    S('_rcK', 0)
+    with repeat(V('_rcn')):
+        inc('_rcI', -1)
+        S('_rcApp', item(L('rec'), V('_rcI')))
+        S('_rcX', 40 - V('rscroll') + V('_rcK') * 250)
+        S('_rcY', 104)
+        P.stag(V('_rcK'))
+        S('_rcOff', V('stag_o'))
+        S('_rcFa', 1)
+        with If((V('rc_dis_app') == V('_rcApp')) | (V('rc_dis_app') == -1)):
+            P.ease((V('rc_dis_t') - (V('_rcK') * 1.5) * (V('rc_dis_app') == -1)) / 8)
+            S('_rcOff', 0 - V('ez_o') * 150)
+            S('_rcFa', 1 - V('ez_o'))
+        inc('_rcK')
+        with If((V('_rcX') > -240) & (V('_rcX') < W)):
+            P.tapr(V('_rcX') + 198, V('_rcY') - 36 + V('_rcOff'), 32, 30)
+            S('_rcCl', V('tap_o'))
+            P.tapr(V('_rcX'), V('_rcY') + V('_rcOff'), 230, 129)
+            S('_rcT', V('tap_o'))
+            S('gh', 100 - V('_rcFa') * 100)
+            P.appicon(item(L('app_icon'), V('_rcApp')), V('_rcX') + 14, V('_rcY') - 20 + V('_rcOff'), 22)
+            P.text(V('_rcX') + 32, V('_rcY') - 20 + V('_rcOff'), item(L('app_name'), V('_rcApp')), 13, 1, 0, 150)
+            P.icon('close', V('_rcX') + 214, V('_rcY') - 20 + V('_rcOff'), 14, 0)
+            P.draw_thumb(V('_rcApp'), V('_rcX') + 115, V('_rcY') + 64.5 + V('_rcOff'), 230, 129, V('_rcFa'))
+            S('gh', 0)
+            with If((V('_rcCl') == 1) & (V('rc_dis_app') == 0)):
+                S('rc_dis_app', V('_rcApp'))
+                S('rc_dis_t', 0)
+                S('_rcT', 0)
+            with If((V('_rcT') == 1) & (V('rc_dis_app') == 0)):
+                P.launch(V('_rcApp'), V('_rcX') + 115 - 31, V('_rcY') + 64.5 - 31)
+                S('op_w0', 230)
+                S('op_h0', 129)
+                S('op_p0', 1)
+    with If(V('rc_dis_app') != 0):
+        change(V('rc_dis_t'), V('fsc'))
+        with If(V('rc_dis_t') > 8 + V('_rcn') * 1.5):
+            with If(V('rc_dis_app') == -1):
+                list_clear(L('rec'))
+            with Else():
+                with If(indexof(L('rec'), V('rc_dis_app')) > 0):
+                    list_delete(L('rec'), indexof(L('rec'), V('rc_dis_app')))
+            S('rc_dis_app', 0)
+    with If((V('_rcn') > 0) & (V('rc_dis_app') == 0)):
+        P.btn(W / 2 - 60, 288, 120, 30, 'Close all', 0)
         with If(V('tap_o') == 1):
-            list_clear(L('rec'))
+            S('rc_dis_app', -1)
+            S('rc_dis_t', 0)
 
 
 # ------------------------------------------------------------ status/nav ---
@@ -486,6 +560,8 @@ def nav_back():
 
 # --------------------------------------------------------------- keyboard --
 L('kb_r1l', list('qwertyuiop'))
+L('app_view', [0] * 8)
+L('app_scroll', [0] * 8)
 
 KB_PAGES = {
     # page: (row1, row2, row3 letters)
@@ -570,7 +646,7 @@ def kb_fn(x, y, w, h, label, ic):
 @proc('')
 def draw_keyboard():
     S('cur_layer', 1)
-    inc('kb_t')
+    change(V('kb_t'), V('fsc'))
     P.ease(V('kb_t') / 6)
     S('kb_top', H - NB - KB_H)
     S('_ky', V('kb_top'))
@@ -666,7 +742,7 @@ V('pk_held', '')
 @proc('')
 def draw_qs():
     S('cur_layer', 1)
-    inc('qs_t')
+    change(V('qs_t'), V('fsc'))
     P.ease(V('qs_t') / 7)
     S('gh', 100 - 50 * V('ez_o'))
     P.rect(0, 0, W, H, pal('black'))
@@ -735,7 +811,7 @@ def draw_dialog():
     S('gh', 40)
     P.rect(0, 0, W, H, pal('black'))
     S('gh', 0)
-    inc('dlg_t')
+    change(V('dlg_t'), V('fsc'))
     P.ease(V('dlg_t') / 6)
     P.set_tf(0.8 + 0.2 * V('ez_o'), W / 2, H / 2)
     P.rrect(W / 2 - 150, 100, 300, 150, 18, V('c_surf'))
@@ -766,7 +842,7 @@ def ask(title, msg, ok, act, arg):
 @proc('')
 def draw_toast():
     with If(V('toast_t') > 0):
-        inc('toast_t', -1)
+        change(V('toast_t'), 0 - V('fsc'))
         P.tw(V('toast'), 13, 1)
         S('gh', 0)
         with If(V('toast_t') < 14):
@@ -806,6 +882,8 @@ def draw_app():
     with If((V('open_t') < V('anim_n')) | (V('gmode') != 0)):
         S('_tfm', 1)
     S('cur_s', 1)
+    S('cur_w', W)
+    S('cur_h', H)
     S('cur_cx', W / 2)
     S('cur_cy', H / 2)
     S('cur_p', 1)
@@ -826,22 +904,23 @@ def draw_app():
                 S('cur_s', V('ga_s') + (1 - V('ga_s')) * V('_e'))
                 S('cur_cx', V('ga_cx') + (W / 2 - V('ga_cx')) * V('_e'))
                 S('cur_cy', V('ga_cy') + (H / 2 - V('ga_cy')) * V('_e'))
-                inc('gt')
+                change(V('gt'), V('fsc'))
                 with If(V('gt') > 6):
                     S('gmode', 0)
             with Else():
                 # opening: the icon turns into the app (inverse of closing)
                 S('_opening', 1)
                 S('_e', 1 - (1 - V('open_t') / V('anim_n')) * (1 - V('open_t') / V('anim_n')))
-                S('cur_p', V('_e'))
-                S('cur_cx', V('open_x') + 31 + (W / 2 - V('open_x') - 31) * V('_e'))
-                S('cur_cy', V('open_y') + 31 + (H / 2 - V('open_y') - 31) * V('_e'))
-                S('cur_w', 62 + (W - 62) * V('_e'))
-                S('cur_h', 62 + (H - 62) * V('_e'))
+                S('cur_p', V('op_p0') + (1 - V('op_p0')) * V('_e'))
+                S('cur_cx', V('op_x0') + (W / 2 - V('op_x0')) * V('_e'))
+                S('cur_cy', V('op_y0') + (H / 2 - V('op_y0')) * V('_e'))
+                S('cur_w', V('op_w0') + (W - V('op_w0')) * V('_e'))
+                S('cur_h', V('op_h0') + (H - V('op_h0')) * V('_e'))
+                S('cur_s', V('cur_w') / W)
                 S('card_app', V('app'))
-                P.draw_card(V('cur_w'), V('cur_h'), V('cur_cx'), V('cur_cy'), clamp((V('_e') - 0.35) / 0.65, 0, 1),
-                            clamp((0.65 - V('_e')) / 0.65, 0, 1), 16 * (1 - V('_e') * V('_e') * V('_e')))
-                inc('open_t')
+                P.draw_card(V('cur_w'), V('cur_h'), V('cur_cx'), V('cur_cy'), clamp((V('cur_p') - 0.35) / 0.65, 0, 1),
+                            clamp((0.65 - V('cur_p')) / 0.65, 0, 1), 16 * (1 - V('cur_p') * V('cur_p') * V('cur_p')))
+                change(V('open_t'), V('fsc'))
         with If(V('_opening') == 0):
             S('cur_w', V('cur_s') * W)
             S('cur_h', V('cur_s') * H)
@@ -860,10 +939,20 @@ def draw_app():
             P.rect(0, H - NB, W, NB, V('c_bg'))
         P.set_tf(1, W / 2, H / 2)
     S('cur_layer', 0)
+    list_replace(L('app_view'), V('app'), V('view'))
+    list_replace(L('app_scroll'), V('app'), V('scroll'))
 
 
 @proc('')
 def frame():
+    # time base: fsc = elapsed time in 30fps-frames, so animations take the same wall time at any refresh rate
+    S('_now', timer())
+    S('fsc', clamp((V('_now') - V('last_t')) * 30, 0, 4))
+    S('last_t', V('_now'))
+    change(V('fclk'), V('fsc'))
+    S('lk30', 1 - mathop('e ^', V('fsc') * math.log(0.7)))
+    S('lk35', 1 - mathop('e ^', V('fsc') * math.log(0.65)))
+    S('lk50', 1 - mathop('e ^', V('fsc') * math.log(0.5)))
     P.input_()
     P.set_tf(1, W / 2, H / 2)
     P.gesture_update()
@@ -917,7 +1006,7 @@ def frame():
         S('pg_sig', V('_psig'))
         S('pg_t', 0)
     with If(V('pg_t') < 99):
-        inc('pg_t')
+        change(V('pg_t'), V('fsc'))
     with If(V('qs_open') == 0):
         S('qs_t', 0)
     # a press that caused a screen/view change must not activate widgets of the new screen on release
@@ -926,7 +1015,8 @@ def frame():
     with If(V('_sig') != V('ui_sig')):
         S('ui_sig', V('_sig'))
         S('moved', 1)
-    with If((V('frame_n') % 150) == 0):
+    with If(V('fclk') - V('last_save') >= 150):
+        S('last_save', V('fclk'))
         P.store_save()
     # screen brightness
     with If(V('bright') < 100):

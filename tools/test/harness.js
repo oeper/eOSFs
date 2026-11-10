@@ -60,6 +60,10 @@ async function open(pmp, opts = {}) {
     prim.jgRuntime_setStageSize = () => {};
     prim.jgRuntime_setMaxFrameRate = () => {};
     vm.runtime.currentStepTime = 1000 / 30;
+    window.__t = 0;                                  // deterministic project timer (ms)
+    const pt = vm.runtime.ioDevices.clock._projectTimer;
+    pt.nowObj = { now: () => window.__t };
+    pt.start();
     window.vm = vm; window.renderer = renderer;
     window.errors = [];
     return null;
@@ -73,10 +77,10 @@ async function open(pmp, opts = {}) {
       if (!opts.gesture) { await api.frames(3); await api.setVar('navmode', 0); }   // older suites use the 3 buttons
     },
     async frames(n = 1) {
-      await page.evaluate((n) => {
-        for (let i = 0; i < n; i++) { vm.runtime._step(); }
+      await page.evaluate(([n, fps]) => {
+        for (let i = 0; i < n; i++) { window.__t += 1000 / fps; vm.runtime._step(); }
         renderer.draw();
-      }, n);
+      }, [n, opts.fps || 30]);
     },
     // UI coords (0..640, 0..360, y down) -> scratch io state
     async mouse(x, y, down) {

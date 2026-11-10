@@ -395,7 +395,7 @@ def switch(id_, x, y, on):
     P.tapr(x - 4, y - 6, 52, 36)
     S('_st', V('tap_o'))
     S('_sp', item(L('sw_pos'), id_))
-    S('_sp', V('_sp') + (on - V('_sp')) * 0.35)
+    S('_sp', V('_sp') + (on - V('_sp')) * V('lk35'))
     list_replace(L('sw_pos'), id_, V('_sp'))
     with If(V('_sp') > 0.5):
         P.rrect(x, y, 44, 24, 12, V('c_acc'))

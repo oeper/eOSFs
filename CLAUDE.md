@@ -46,6 +46,11 @@ settings + FS only (not Paint/terminal history).
   (`vis()`), and `hit()`/`scroll_update` ignore input, so scrolled content can't spill out of a shrunken window.
 * **Hold halfway** (`g_still` ≥ 7 frames between 42%-82% of the height): `g_rec=1` → `draw_switcher_preview` shows the other open apps around the
   shrunken card; releasing opens the Recents screen.
+* **Time base**: never count frames. `fsc` = elapsed time in 30 fps-frames (computed from `timer()` at the top of `frame`); advance every
+  animation counter with `change(V('x'), V('fsc'))`, use `lk30/lk35/lk50` for frame-rate-independent easing, `fclk` for blinks/pulses. Tests run on a fake
+  clock (`open(pmp,{fps})`); `timebase.js` checks 30/60/120 fps give equal durations.
+* **Recents** shows live app windows: each app's `view`/`scroll` are saved per frame in `app_view/app_scroll` and `draw_thumb` redraws any app from
+  them. Use unique `_rc*` temps there – the app draw procs share the global temp namespace.
 * **In-app animation helpers** (os_core.py): `P.ease(t)` → `ez_o`; `P.stag(k)` → `stag_o` (list-row entrance offset). Counters that restart on a
   change and are advanced per frame: `pg_t` (page slide-in/row stagger; reset when screen/app/view/folder/clock tab changes), `kb_t` (keyboard rise),
   `qs_t` (quick-settings drop), `dlg_t` (dialog pop), `cb_t` (calculator display pulse), `pt_pop` (Paint colour), `sn_pop` (Snake game-over).
