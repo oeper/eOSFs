@@ -40,6 +40,12 @@ settings + FS only (not Paint/terminal history).
   side edge = `gtype 2` edge-swipe back. Back/Home buttons and `nav_back` also use `close_app_anim`.
 * Opening an app (`launch`) animates from the icon (or recents card) for `anim_n` frames (Settings: Fast 6 / Normal 10 / Slow 16).
   While any transform animation runs `act_layer` is 3, so no widget reacts.
+* **Morph animation**: `draw_card(w,h,cx,cy,fa,ia,r)` draws an app window of any shape (bg, content scaled to fit with alpha `fa`, app icon with alpha `ia`).
+  Opening = icon → app (`open_t`), closing = app → icon on its own layer (`cl_*`, `draw_closing`) so Home is usable and another app can open while it
+  runs; closing can start while opening (`cur_w/h/cx/cy/p` hold the live window). While `gs != 1` primitives cull anything not fully inside the window
+  (`vis()`), and `hit()`/`scroll_update` ignore input, so scrolled content can't spill out of a shrunken window.
+* **Hold halfway** (`g_still` ≥ 7 frames between 42%-82% of the height): `g_rec=1` → `draw_switcher_preview` shows the other open apps around the
+  shrunken card; releasing opens the Recents screen.
 * **In-app animation helpers** (os_core.py): `P.ease(t)` → `ez_o`; `P.stag(k)` → `stag_o` (list-row entrance offset). Counters that restart on a
   change and are advanced per frame: `pg_t` (page slide-in/row stagger; reset when screen/app/view/folder/clock tab changes), `kb_t` (keyboard rise),
   `qs_t` (quick-settings drop), `dlg_t` (dialog pop), `cb_t` (calculator display pulse), `pt_pop` (Paint colour), `sn_pop` (Snake game-over).

@@ -29,11 +29,44 @@ const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98
   await h.shot(OUT + 'g_drag2.png');
   // release high -> closes into icon
   await h.mouse(368, 150, false); await h.frames(2);
-  expect('release high starts close animation', await V('gmode') === 2);
-  await h.frames(4); await h.shot(OUT + 'g_close_mid.png');
+  expect('release high: Home is reached at once, card keeps morphing', await V('screen') === 2 && await V('cl_on') === 1, `${await V('screen')} ${await V('cl_on')}`);
+  await h.frames(3); await h.shot(OUT + 'g_close_mid.png');
+  await h.frames(2); await h.shot(OUT + 'g_close_mid2.png');
   await h.frames(12);
-  expect('app closed to home', await V('screen') === 2 && await V('gmode') === 0 && await V('gs') === 1, `${await V('screen')} ${await V('gmode')}`);
+  expect('closing layer finished', await V('cl_on') === 0 && await V('gmode') === 0 && await V('gs') === 1, `${await V('cl_on')} ${await V('gmode')}`);
   expect('closed app stays in recents', (await V('rec')).includes(3));
+  // ---- open another app while one is still closing
+  await h.click(...icon(3)); await h.frames(14);
+  await h.drag(320, 350, 320, 140, 6); await h.frames(1);
+  expect('closing started', await V('cl_on') === 1 && await V('screen') === 2);
+  await h.click(...icon(4)); await h.frames(2);
+  expect('another app opens while the first is closing', await V('app') === 4 && await V('screen') === 3 && await V('cl_on') === 1, `${await V('app')} ${await V('screen')} ${await V('cl_on')}`);
+  await h.shot(OUT + 'g_overlap.png');
+  await h.frames(16);
+  expect('both animations finish', await V('cl_on') === 0 && await V('open_t') >= 10 && await V('screen') === 3);
+  // ---- close an app while it is still opening
+  await h.click(320, 10); await h.frames(1); await h.click(320, 300); await h.frames(2);
+  await h.mouse(0, 0, false);
+  await h.click(...[320, 346]); await h.frames(14);
+  await h.drag(320, 350, 320, 140, 6); await h.frames(16);
+  expect('back home', await V('screen') === 2);
+  await h.click(...icon(2)); await h.frames(3);
+  expect('opening in progress', await V('open_t') < 10 && await V('screen') === 3);
+  await h.drag(320, 350, 320, 140, 4); await h.frames(1);
+  expect('can close while still opening', await V('screen') === 2 && await V('cl_on') === 1, `${await V('screen')} ${await V('cl_on')}`);
+  await h.frames(16);
+  await h.click(320, 346); await h.frames(1);   // a tap right before a gesture must not block it
+  // ---- swipe halfway and hold -> other open apps appear; release -> app switcher
+  await h.click(...icon(2)); await h.frames(14);
+  await h.mouse(320, 350, false); await h.frames(1); await h.mouse(320, 350, true); await h.frames(1);
+  await h.mouse(320, 250, true); await h.frames(2); await h.mouse(320, 220, true); await h.frames(12);
+  expect('holding halfway shows the switcher preview', await V('g_rec') === 1 && await V('gmode') === 1, `${await V('g_rec')} ${await V('gmode')}`);
+  await h.shot(OUT + 'g_hold.png');
+  await h.mouse(320, 220, false); await h.frames(3);
+  expect('release after hold opens recents', await V('screen') === 4, await V('screen'));
+  await h.click(320, 300); await h.frames(1);
+  await h.drag(320, 350, 320, 220, 6); await h.frames(3);
+  expect('swipe up in recents -> home', await V('screen') === 2, await V('screen'));
   // ---- drag a little and release low -> snaps back
   await h.click(...icon(3)); await h.frames(14);
   await h.mouse(320, 350, false); await h.frames(1);

@@ -755,6 +755,12 @@ L('clk_tabs', ['Clock', 'Stopwatch', 'Timer'])
 @proc('x1 y1 x2 y2 w color')
 def hand(x1, y1, x2, y2, w, color):
     """round-capped pen line in UI coordinates (clock hands/ticks)"""
+    with If(vis(y1 - w, y1 + w) & vis(y2 - w, y2 + w)):
+        P.hand_raw(x1, y1, x2, y2, w, color)
+
+
+@proc('x1 y1 x2 y2 w color', name='hand_raw')
+def _hand_raw(x1, y1, x2, y2, w, color):
     pen_up()
     pen_color(color)
     pen_size(w * V('gs'))

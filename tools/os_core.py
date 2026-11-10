@@ -76,6 +76,12 @@ L('mon', ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'Augus
           'October', 'November', 'December'])
 
 
+def vis(top, bottom):
+    """True when unscaled, or - while an app is drawn shrunken (gesture/animation) - only if fully inside the window.
+    There is no clipping, so partially visible elements would spill out of the shrunken window."""
+    return (V('gs') == 1) | (~(top < 0) & ~(bottom > H))
+
+
 @proc('t')
 def ease(t):
     """ease-out quad of t (clamped 0..1) -> ez_o"""
@@ -93,7 +99,7 @@ def stag(k):
 # ------------------------------------------------------------ primitives ---
 @proc('x y w h c')
 def rect(x, y, w, h, c):
-    with If((w > 0) & (h > 0)):
+    with If((w > 0) & (h > 0) & vis(y, y + h)):
         costume(c + 0)
         effect('GHOST', V('gh'))
         set_stretch(w * V('gs'), h * V('gs'))
@@ -103,7 +109,7 @@ def rect(x, y, w, h, c):
 
 @proc('cx cy d c')
 def circle(cx, cy, d, c):
-    with If(d > 0):
+    with If((d > 0) & vis(cy - d / 2, cy + d / 2)):
         costume(c + NP)
         effect('GHOST', V('gh'))
         set_stretch(d * V('gs'), d * V('gs'))
@@ -113,6 +119,12 @@ def circle(cx, cy, d, c):
 
 @proc('x y w h r c')
 def rrect(x, y, w, h, r, c):
+    with If(vis(y, y + h)):
+        P.rrect_raw(x, y, w, h, r, c)
+
+
+@proc('x y w h r c', name='rrect_raw')
+def _rrect_raw(x, y, w, h, r, c):
     S('_r', r)
     with If(V('_r') * 2 > h):
         S('_r', h / 2)
@@ -131,6 +143,12 @@ def rrect(x, y, w, h, r, c):
 
 @proc('x y s size bold tint maxw')
 def text(x, y, s, size, bold, tint, maxw):
+    with If(vis(y - size * 0.7, y + size * 0.7)):
+        P.text_raw(x, y, s, size, bold, tint, maxw)
+
+
+@proc('x y s size bold tint maxw', name='text_raw')
+def _text_raw(x, y, s, size, bold, tint, maxw):
     """y = vertical centre of the text line.  bold 0/1.  tint = brightness (0 white, -90 near black)."""
     with If(bold == 1):
         S('_pf', 'b')
@@ -217,7 +235,7 @@ def para(x, y, w, s, size, lh, tint, draw):
             with If(V('_px') + V('_pw') > x + w):
                 S('_px', x)
                 change(V('_py'), lh)
-            with If((draw == 1) & (V('_pcs') == 1)):
+            with If((draw == 1) & (V('_pcs') == 1) & vis(V('_py') - size * 0.7, V('_py') + size * 0.7)):
                 goto(V('gox') + V('_px') * V('gs') - 320, 180 - V('goy') - (V('_py') + size * 0.36) * V('gs'))
                 stamp()
             change(V('_px'), V('_pw'))
@@ -229,6 +247,12 @@ def para(x, y, w, s, size, lh, tint, draw):
 
 @proc('name cx cy size tint')
 def icon(name, cx, cy, size, tint):
+    with If(vis(cy - size / 2, cy + size / 2)):
+        P.icon_raw(name, cx, cy, size, tint)
+
+
+@proc('name cx cy size tint', name='icon_raw')
+def _icon_raw(name, cx, cy, size, tint):
     costume(join('i_', name))
     effect('BRIGHTNESS', tint)
     effect('GHOST', V('gh'))
@@ -240,6 +264,12 @@ def icon(name, cx, cy, size, tint):
 
 @proc('name cx cy size')
 def appicon(name, cx, cy, size):
+    with If(vis(cy - size / 2, cy + size / 2)):
+        P.appicon_raw(name, cx, cy, size)
+
+
+@proc('name cx cy size', name='appicon_raw')
+def _appicon_raw(name, cx, cy, size):
     costume(join('a_', name))
     effect('GHOST', V('gh'))
     set_stretch(size * V('gs'), size * V('gs'))
@@ -290,7 +320,7 @@ def input_():
 @proc('x y w h')
 def hit(x, y, w, h):
     S('hit_o', 0)
-    with If((V('mx') >= x) & (V('mx') < x + w) & (V('my') >= y) & (V('my') < y + h)):
+    with If((V('mx') >= x) & (V('mx') < x + w) & (V('my') >= y) & (V('my') < y + h) & (V('gs') == 1)):
         with If(V('cur_layer') >= V('act_layer')):
             with If(V('cur_layer') > 0):
                 S('hit_o', 1)
@@ -325,7 +355,7 @@ def tapr(x, y, w, h):
 def scroll_update(mx_):
     """vertical drag scrolling; clamps V('scroll') to 0..max"""
     with If(V('press') == 1):
-        with If((V('my') >= V('clip0')) & (V('my') < V('clip1')) & (V('cur_layer') >= V('act_layer')) &
+        with If((V('gs') == 1) & (V('my') >= V('clip0')) & (V('my') < V('clip1')) & (V('cur_layer') >= V('act_layer')) &
                 ((V('kb_open') == 0) | (V('my') < V('kb_top')))):
             S('sc_on', 1)
             S('sc_y0', V('my'))

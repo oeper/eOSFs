@@ -4,7 +4,8 @@ from os_core import *
 
 KB_H = 130
 
-for _n, _v in [('navmode', 1), ('anim_n', 10), ('gmode', 0), ('gtype', 0), ('gt', 0), ('ga_s', 1), ('ga_cx', W / 2),
+for _n, _v in [('g_still', 0), ('g_rec', 0), ('g_px', 0), ('g_py', 0), ('cl_w0', W), ('cl_h0', H), ('cl_p0', 1), ('cur_w', W), ('cur_h', H), ('cur_p', 1), ('cl_on', 0), ('cl_app', 0), ('cl_t', 0), ('cl_full', 1), ('cl_s0', 1), ('cl_x0', W / 2), ('cl_y0', H / 2),
+               ('cur_s', 1), ('cur_cx', W / 2), ('cur_cy', H / 2), ('navmode', 1), ('anim_n', 10), ('gmode', 0), ('gtype', 0), ('gt', 0), ('ga_s', 1), ('ga_cx', W / 2),
                ('ga_cy', H / 2), ('gx0', 0), ('boot_t', 0), ('pin_in', ''), ('pin_show', 0), ('back_o', 0), ('kb_k', ''), ('_kbx', 0),
                ('pad_o', ''), ('rc_n', 0), ('qs_h', 0), ('lock_t', 0)]:
     V(_n, _v)
@@ -158,13 +159,20 @@ def draw_home():
 
 @proc('a ox oy')
 def launch(a, ox, oy):
-    S('app', a)
     S('view', 0)
     S('scroll', 0)
     S('kb_open', 0)
     S('qs_open', 0)
     S('open_x', ox)
     S('open_y', oy)
+    with If((V('screen') == SCR_APP) & (V('open_t') < V('anim_n')) & (V('app') != a)):
+        P.start_close(V('app'), V('cur_w'), V('cur_h'), V('cur_cx'), V('cur_cy'), V('cur_p'))      # previous app was still opening: let it shrink away
+    S('app', a)
+    with If(V('cl_on') == 1):
+        with If(V('cl_app') == a):
+            S('cl_on', 0)
+        with Else():
+            S('cl_full', 0)
     S('open_t', 0)
     S('gmode', 0)
     with If(indexof(L('rec'), a) == 0):
@@ -183,27 +191,95 @@ def set_tf(s_, cx, cy):
     S('goy', cy - H / 2 * s_)
 
 
-@proc('')
-def close_app_anim():
-    """shrink the foreground app into its home-screen icon, then go home"""
-    with If(V('gmode') != 1):
-        S('ga_s', 1)
-        S('ga_cx', W / 2)
-        S('ga_cy', H / 2)
+@proc('a w h cx cy p')
+def start_close(a, w, h, cx, cy, p):
+    """move app `a` (drawn as a w x h window at centre cx,cy, `p` = how app-like it still is) onto the closing layer
+    and go Home at once; the window keeps morphing into its icon while Home is already usable"""
+    S('cl_app', a)
+    S('cl_w0', w)
+    S('cl_h0', h)
+    S('cl_x0', cx)
+    S('cl_y0', cy)
+    S('cl_p0', p)
+    S('cl_t', 0)
+    S('cl_full', 1)
+    S('cl_on', 1)
     S('kb_open', 0)
     S('qs_open', 0)
-    S('gmode', 2)
-    S('gt', 0)
+    S('gmode', 0)
+    S('open_t', 99)
+    S('screen', SCR_HOME)
+
+
+@proc('')
+def close_app_anim():
+    """close the foreground app (also while it is still opening: starts from the window's current shape)"""
+    with If(V('gmode') == 1):
+        P.start_close(V('app'), V('ga_s') * W, V('ga_s') * H, V('ga_cx'), V('ga_cy'), 1)
+    with Else():
+        P.start_close(V('app'), V('cur_w'), V('cur_h'), V('cur_cx'), V('cur_cy'), V('cur_p'))
+
+
+@proc('w h cx cy fa ia r')
+def draw_card(w, h, cx, cy, fa, ia, r):
+    """an app window of any shape: bg + app content (alpha fa, scaled to fit) + app icon (alpha ia)"""
+    P.rrect(cx - w / 2, cy - h / 2, w, h, r, V('c_bg'))
+    with If(fa > 0.03):
+        S('gh', 100 - fa * 100)
+        P.set_tf(clamp(w / W, 0, h / H), cx, cy)          # fit the content inside the (morphing) window
+        S('clip0', SB)
+        S('clip1', H - NB)
+        P.app_draw()
+        P.rect(0, 0, W, SB, V('c_bg'))
+        P.rect(0, H - NB, W, NB, V('c_bg'))
+        P.set_tf(1, W / 2, H / 2)
+        S('gh', 0)
+        S('cur_layer', 0)
+    with If(ia > 0.03):
+        S('gh', 100 - ia * 100)
+        P.appicon(item(L('app_icon'), V('card_app')), cx, cy, clamp(w, 0, h))
+        S('gh', 0)
+
+
+V('card_app', 1)
+
+
+@proc('')
+def draw_closing():
+    """the closing window (own layer so another app can open meanwhile)"""
+    with If(V('cl_on') == 1):
+        S('_ce', 1 - (1 - V('cl_t') / V('anim_n')) * (1 - V('cl_t') / V('anim_n')))
+        S('_cix', 93 + ((V('cl_app') - 1) % 4) * 130 + 31)
+        S('_ciy', 146 + floor((V('cl_app') - 1) / 4) * 98 + 31)
+        S('_cp', V('cl_p0') * (1 - V('_ce')))
+        S('_cfa', clamp((V('_cp') - 0.35) / 0.65, 0, 1))
+        S('_cia', clamp((0.65 - V('_cp')) / 0.65, 0, 1))
+        with If(V('cl_full') == 0):
+            S('_cfa', 0)
+            S('_cia', 1)
+        S('card_app', V('cl_app'))
+        P.draw_card(V('cl_w0') + (62 - V('cl_w0')) * V('_ce'), V('cl_h0') + (62 - V('cl_h0')) * V('_ce'),
+                    V('cl_x0') + (V('_cix') - V('cl_x0')) * V('_ce'), V('cl_y0') + (V('_ciy') - V('cl_y0')) * V('_ce'),
+                    V('_cfa'), V('_cia'), 16 * (1 - V('_cp') * V('_cp') * V('_cp')))
+        inc('cl_t')
+        with If(V('cl_t') > V('anim_n')):
+            S('cl_on', 0)
 
 
 @proc('')
 def gesture_update():
     """gesture-bar navigation (navmode 1): drag the bar up to shrink/close the app, edge-swipe for back"""
-    with If((V('navmode') == 1) & (V('dlg') == 0) & (V('screen') >= SCR_HOME) & (V('gmode') <= 1)):
+    with If((V('navmode') == 1) & (V('dlg') == 0) & (V('screen') >= SCR_HOME)):
         with If(V('press') == 1):
             S('gtype', 0)
+            with If(V('gmode') == 3):
+                S('gmode', 0)                      # a new touch interrupts the snap-back
             with If(V('my') >= H - NB):
                 S('gtype', 1)
+                S('g_still', 0)
+                S('g_rec', 0)
+                S('g_px', V('mx'))
+                S('g_py', V('my'))
                 S('gx0', V('mx'))
                 S('press', 0)
                 S('moved', 1)
@@ -212,28 +288,48 @@ def gesture_update():
                     S('gtype', 2)
                     S('press', 0)
                     S('moved', 1)
-        with If((V('gtype') == 1) & (V('md') == 1) & (V('screen') == SCR_APP) & (V('open_t') >= V('anim_n'))):
+        with If((V('gtype') == 1) & (V('md') == 1) & (V('screen') == SCR_APP)):
+            S('open_t', 99)
             S('gmode', 1)
             S('kb_open', 0)
             S('qs_open', 0)
-            S('_gd', clamp((H - V('my')) / H, 0, 1))
-            S('ga_s', clamp(1 - V('_gd') * 0.95, 0.22, 1))
-            S('ga_cx', W / 2 + (V('mx') - V('gx0')))
-            S('ga_cy', V('my') - V('ga_s') * H / 2 + 10)
+            with If(abs_(V('mx') - V('g_px')) + abs_(V('my') - V('g_py')) <= 3):
+                inc('g_still')
+            with Else():
+                S('g_still', 0)
+                S('g_rec', 0)
+            S('g_px', V('mx'))
+            S('g_py', V('my'))
+            with If((V('g_still') >= 7) & (V('my') > H * 0.42) & (V('my') < H * 0.82)):
+                S('g_rec', 1)                      # held halfway: show the other open apps
+            with If(V('g_rec') == 1):
+                S('ga_s', V('ga_s') + (0.5 - V('ga_s')) * 0.3)
+                S('ga_cx', V('ga_cx') + (W / 2 - V('ga_cx')) * 0.3)
+                S('ga_cy', V('ga_cy') + (H / 2 - 14 - V('ga_cy')) * 0.3)
+            with Else():
+                S('_gd', clamp((H - V('my')) / H, 0, 1))
+                S('ga_s', clamp(1 - V('_gd') * 0.95, 0.22, 1))
+                S('ga_cx', W / 2 + (V('mx') - V('gx0')))
+                S('ga_cy', V('my') - V('ga_s') * H / 2 + 10)
         with If((V('gtype') != 0) & (V('rel') == 1)):
             S('rel', 0)
+            S('_gs', V('screen'))
             with If(V('gtype') == 1):
                 with If(V('gmode') == 1):
-                    with If(V('my') < H * 0.74):
-                        S('gmode', 2)
-                        S('gt', 0)
+                    with If(V('g_rec') == 1):
+                        S('g_rec', 0)
+                        S('gmode', 0)
+                        S('open_t', 99)
+                        P.nav_recents()
                     with Else():
-                        with If(V('ga_s') > 0.97):
+                      with If(V('my') < H * 0.74):
+                        P.close_app_anim()
+                      with Else():
+                        with If(V('ga_s') > 0.9):
                             S('gmode', 0)
                         with Else():
                             S('gmode', 3)
                             S('gt', 0)
-                S('_gs', V('screen'))
                 with If((V('_gs') == SCR_HOME) & (V('py') - V('my') > 60)):
                     P.nav_recents()
                 with If((V('_gs') == SCR_REC) & (V('py') - V('my') > 60)):
@@ -685,52 +781,84 @@ def draw_toast():
 
 # ------------------------------------------------------------------ frame ---
 @proc('')
+def draw_switcher_preview():
+    """swipe-and-hold: the other open apps appear around the shrunken current app"""
+    S('gh', 55)
+    P.rect(0, 0, W, H, pal('black'))
+    S('gh', 0)
+    S('_sj', 0)
+    S('_sk', listlen(L('rec')) + 1)
+    with repeat(listlen(L('rec'))):
+        inc('_sk', -1)
+        S('_sa', item(L('rec'), V('_sk')))
+        with If((V('_sa') != V('app')) & (V('_sj') < 4)):
+            inc('_sj')
+            S('_sx', W / 2 + (255 + (floor((V('_sj') + 1) / 2) - 1) * 166) * (1 - (V('_sj') % 2) * 2))
+            P.rrect(V('_sx') - 75, H / 2 - 14 - 45, 150, 90, 14, V('c_surf'))
+            P.appicon(item(L('app_icon'), V('_sa')), V('_sx'), H / 2 - 14 - 8, 44)
+            P.text_c(V('_sx'), H / 2 - 14 + 30, item(L('app_name'), V('_sa')), 12, 1, V('tx'))
+    P.text_c(W / 2, H / 2 + 100, 'Release to open the app switcher', 12, 1, 0)
+
+
+@proc('')
 def draw_app():
     S('_tfm', 0)
     with If((V('open_t') < V('anim_n')) | (V('gmode') != 0)):
         S('_tfm', 1)
+    S('cur_s', 1)
+    S('cur_cx', W / 2)
+    S('cur_cy', H / 2)
+    S('cur_p', 1)
+    S('_opening', 0)
     with If(V('_tfm') == 1):
-        S('press', 0)
-        S('rel', 0)
         P.draw_home()
-        S('_ix', 93 + ((V('app') - 1) % 4) * 130 + 31)
-        S('_iy', 146 + floor((V('app') - 1) / 4) * 98 + 31)
+        P.draw_closing()
+        with If((V('gmode') == 1) & (V('g_rec') == 1)):
+            P.draw_switcher_preview()
         with If(V('gmode') == 1):
-            P.set_tf(V('ga_s'), V('ga_cx'), V('ga_cy'))
+            S('cur_s', V('ga_s'))
+            S('cur_cx', V('ga_cx'))
+            S('cur_cy', V('ga_cy'))
         with Else():
-            with If(V('gmode') == 2):
-                S('_t', V('gt') / V('anim_n'))
+            with If(V('gmode') == 3):
+                S('_t', V('gt') / 6)
                 S('_e', 1 - (1 - V('_t')) * (1 - V('_t')))
-                P.set_tf(V('ga_s') + (0.11 - V('ga_s')) * V('_e'), V('ga_cx') + (V('_ix') - V('ga_cx')) * V('_e'),
-                         V('ga_cy') + (V('_iy') - V('ga_cy')) * V('_e'))
+                S('cur_s', V('ga_s') + (1 - V('ga_s')) * V('_e'))
+                S('cur_cx', V('ga_cx') + (W / 2 - V('ga_cx')) * V('_e'))
+                S('cur_cy', V('ga_cy') + (H / 2 - V('ga_cy')) * V('_e'))
                 inc('gt')
-                with If(V('gt') > V('anim_n')):
+                with If(V('gt') > 6):
                     S('gmode', 0)
-                    S('screen', SCR_HOME)
-                    S('open_t', 99)
             with Else():
-                with If(V('gmode') == 3):
-                    S('_t', V('gt') / 6)
-                    S('_e', 1 - (1 - V('_t')) * (1 - V('_t')))
-                    P.set_tf(V('ga_s') + (1 - V('ga_s')) * V('_e'), V('ga_cx') + (W / 2 - V('ga_cx')) * V('_e'),
-                             V('ga_cy') + (H / 2 - V('ga_cy')) * V('_e'))
-                    inc('gt')
-                    with If(V('gt') > 6):
-                        S('gmode', 0)
-                with Else():
-                    S('_t', V('open_t') / V('anim_n'))
-                    S('_e', 1 - (1 - V('_t')) * (1 - V('_t')))
-                    P.set_tf(0.11 + 0.89 * V('_e'), V('open_x') + 31 + (W / 2 - V('open_x') - 31) * V('_e'),
-                             V('open_y') + 31 + (H / 2 - V('open_y') - 31) * V('_e'))
-                    inc('open_t')
-    S('clip0', SB)
-    S('clip1', H - NB)
-    P.rrect(0, 0, W, H, (1 - V('gs')) * 60, V('c_bg'))
-    with If(V('_tfm') == 0):
-        P.ease(V('pg_t') / V('anim_n'))                       # page transition: slide in from the right
-        P.set_tf(1, W / 2 + (1 - V('ez_o')) * 36, H / 2)
-    P.app_draw()
-    P.set_tf(1, W / 2, H / 2)
+                # opening: the icon turns into the app (inverse of closing)
+                S('_opening', 1)
+                S('_e', 1 - (1 - V('open_t') / V('anim_n')) * (1 - V('open_t') / V('anim_n')))
+                S('cur_p', V('_e'))
+                S('cur_cx', V('open_x') + 31 + (W / 2 - V('open_x') - 31) * V('_e'))
+                S('cur_cy', V('open_y') + 31 + (H / 2 - V('open_y') - 31) * V('_e'))
+                S('cur_w', 62 + (W - 62) * V('_e'))
+                S('cur_h', 62 + (H - 62) * V('_e'))
+                S('card_app', V('app'))
+                P.draw_card(V('cur_w'), V('cur_h'), V('cur_cx'), V('cur_cy'), clamp((V('_e') - 0.35) / 0.65, 0, 1),
+                            clamp((0.65 - V('_e')) / 0.65, 0, 1), 16 * (1 - V('_e') * V('_e') * V('_e')))
+                inc('open_t')
+        with If(V('_opening') == 0):
+            S('cur_w', V('cur_s') * W)
+            S('cur_h', V('cur_s') * H)
+            P.set_tf(V('cur_s'), V('cur_cx'), V('cur_cy'))
+    with If(V('_opening') == 0):
+        S('clip0', SB)
+        S('clip1', H - NB)
+        P.rrect(0, 0, W, H, (1 - V('gs')) * 60, V('c_bg'))
+        with If(V('_tfm') == 0):
+            P.ease(V('pg_t') / V('anim_n'))                       # page transition: slide in from the right
+            P.set_tf(1, W / 2 + (1 - V('ez_o')) * 36, H / 2)
+        P.app_draw()
+        with If(V('gs') != 1):
+            # shrunken window: bars drawn in window space hide anything that overlaps them (no clipping exists)
+            P.rect(0, 0, W, SB, V('c_bg'))
+            P.rect(0, H - NB, W, NB, V('c_bg'))
+        P.set_tf(1, W / 2, H / 2)
     S('cur_layer', 0)
 
 
@@ -751,7 +879,7 @@ def frame():
         S('act_layer', 1)
     with If(V('dlg') == 1):
         S('act_layer', 2)
-    with If((V('gmode') != 0) | ((V('screen') == SCR_APP) & (V('open_t') < V('anim_n')))):
+    with If(V('gmode') == 1):
         S('act_layer', 3)
     S('cur_layer', 0)
     S('clip0', SB)
@@ -763,7 +891,7 @@ def frame():
     dispatch(V('screen'), [
         (SCR_BOOT, lambda: P.draw_boot()),
         (SCR_LOCK, lambda: P.draw_lock()),
-        (SCR_HOME, lambda: P.draw_home()),
+        (SCR_HOME, lambda: (P.draw_home(), P.draw_closing())),
         (SCR_APP, lambda: P.draw_app()),
         (SCR_REC, lambda: P.draw_recents()),
     ])
@@ -833,6 +961,7 @@ def make_main_script():
         S('open_t', 99)
         S('gmode', 0)
         S('gtype', 0)
+        S('cl_on', 0)
         S('toast_t', 0)
         S('app', 0)
         list_clear(L('rec'))
