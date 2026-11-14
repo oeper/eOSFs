@@ -1,6 +1,6 @@
 // Animations must take the same wall time at 30, 60 and 120 fps.
 const { open } = require('./harness');
-const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98];
+const icon = i => [96 + ((i - 1) % 5) * 112, 177 + Math.floor((i - 1) / 5) * 98];
 let fails = 0;
 const expect = (n, c, e = '') => { console.log((c ? 'PASS ' : 'FAIL ') + n + (c ? '' : '  -> ' + e)); if (!c) fails++; };
 (async () => {

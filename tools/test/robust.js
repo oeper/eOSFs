@@ -1,7 +1,7 @@
 const { open } = require('./harness');
 let fails = 0;
 const expect = (n, c, e = '') => { console.log((c ? 'PASS ' : 'FAIL ') + n + (c ? '' : '  -> ' + e)); if (!c) fails++; };
-const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98];
+const icon = i => [96 + ((i - 1) % 5) * 112, 177 + Math.floor((i - 1) / 5) * 98];
 (async () => {
   const h = await open(process.argv[2]); const V = n => h.getVar(n);
   const timeFrames = async (label, n = 30) => { const t = await h.page.evaluate(n => { const t0 = performance.now(); for (let i = 0; i < n; i++) vm.runtime._step(); return (performance.now() - t0) / n; }, n); console.log(`  ${label}: ${t.toFixed(1)} ms/frame`); return t; };

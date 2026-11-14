@@ -2,7 +2,7 @@ const { open } = require('./harness');
 const OUT = (process.env.EOS_OUT || '/tmp/eos-test') + '/'; require('fs').mkdirSync(OUT, { recursive: true });
 let fails = 0;
 const expect = (name, cond, extra = '') => { console.log((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : '   -> ' + extra)); if (!cond) fails++; };
-const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98];
+const icon = i => [96 + ((i - 1) % 5) * 112, 177 + Math.floor((i - 1) / 5) * 98];
 const HOME = [320, 346], BACK = [220, 346], RECENTS = [420, 346];
 const KT = 202; // keyboard top
 function key(ch) {
@@ -118,8 +118,12 @@ const calcKey = k => k === '0' ? [228, 293.5] : k === '.' ? [366, 293.5] : k ===
   await h.click(320, 10); await h.frames(3);
   expect('status bar opens quick settings', await V('qs_open') === 1);
   await h.shot(OUT + 'i_qs.png');
-  await h.click(34 + 3 * 148 + 68, 24 + 14 + 30); await h.frames(3);   // lock tile
-  expect('lock tile locks', await V('screen') === 1 && await V('qs_open') === 0);
+  await h.click(34 + 3 * 148 + 68, 24 + 14 + 30); await h.frames(4);   // power tile
+  expect('power tile opens the power menu (animated)', await V('pw') === 1 && await V('qs_open') === 0 && await V('pw_a') > 0.05 && await V('pw_a') < 0.95, await V('pw_a'));
+  await h.shot(OUT + 'i_power_mid.png');
+  await h.frames(12); await h.shot(OUT + 'i_power.png');
+  await h.click(190, 165); await h.frames(3);                          // Lock
+  expect('power menu: Lock locks', await V('screen') === 1 && await V('pw') === 0);
   await h.click(320, 200); await h.frames(3);
   expect('PIN pad shown', await V('pin_show') === 1);
   await h.shot(OUT + 'i_pin.png');

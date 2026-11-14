@@ -29,6 +29,13 @@ def store_save():
                             V('bt'), SEP, V('h24'), SEP, V('pin'), SEP, V('sn_best'), SEP, V('navmode'), SEP,
                             V('anim_n'), SEP, V('nav_col'), SEP, V('nav_barw'), SEP, V('nav_barh'), SEP, V('nav_close'), SEP,
                             V('nav_swipe'), SEP, V('nav_edge'), SEP, V('nav_hold'), SEP, V('nav_tap'), SEP))
+    ls_set('sound', join(V('vol'), SEP, V('mute'), SEP))
+    S('_sv', '')
+    S('_k', 0)
+    with repeat(listlen(L('home_apps'))):          # installed apps in Home order
+        inc('_k')
+        S('_sv', join(V('_sv'), item(L('home_apps'), V('_k')), SEP))
+    ls_set('home', V('_sv'))
 
 
 @proc('s')
@@ -70,6 +77,27 @@ def store_load():
             S('h24', item(L('ld_tmp'), 7))
             S('pin', item(L('ld_tmp'), 8))
             S('sn_best', item(L('ld_tmp'), 9))
+    S('_ld', ls_get('sound'))
+    with If(length(V('_ld')) > 2):
+        P.split_to_tmp(V('_ld'))
+        with If(listlen(L('ld_tmp')) == 2):
+            S('vol', item(L('ld_tmp'), 1))
+            S('mute', item(L('ld_tmp'), 2))
+    # ---- Home: installed apps and their order (core apps can never go missing)
+    S('_ld', ls_get('home'))
+    with If(length(V('_ld')) > 1):
+        P.split_to_tmp(V('_ld'))
+        list_clear(L('home_apps'))
+        S('_k', 0)
+        with repeat(listlen(L('ld_tmp'))):
+            inc('_k')
+            S('_lf', item(L('ld_tmp'), V('_k')))
+            with If((V('_lf') >= 1) & (V('_lf') <= NAPPS) & (round_(V('_lf')) == V('_lf')) &
+                    (indexof(L('home_apps'), V('_lf')) == 0)):
+                list_add(L('home_apps'), V('_lf'))
+        for _a in CORE_APPS:
+            with If(indexof(L('home_apps'), _a) == 0):
+                list_add(L('home_apps'), _a)
     # ---- files: parse records, keep the defaults if anything looks wrong
     S('_ld', ls_get('fs'))
     with If(length(V('_ld')) > 10):

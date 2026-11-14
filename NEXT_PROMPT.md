@@ -16,7 +16,9 @@ you haven't seen. Keep every suite green, add tests for each feature, commit + p
 Done: sprite edition is the shipped `eOS.pmp` (apps = sprites, UI = Element clones, Iris Text); gesture bar (resize, morph, interruptible,
 swipe-hold switcher carousel, sideways app switching, customisable navigation); everything animated (screens, unlock, PIN, panels, bars,
 keyboard, dialog, toasts, theme, in-app widgets); draggable control centre + notification centre; time-based animations; live recents.
-Still open below. Verify in real PenguinMod (Iris Text especially) and fix whatever the user's screenshots show first.
+Also done (features round): App Store (install/remove built-in apps, progress, persisted), Home grid from `home_apps` with hold-to-rearrange,
+search (apps + files), power menu (lock/restart/shut down), UI sounds + volume/mute, back-gesture chevron, Iris Text blink/misplacement fix.
+Still open below (items already listed as done here are finished - skip them). Verify in real PenguinMod (Iris Text especially) and fix whatever the user's screenshots show first.
 
 ## Backlog (the user asked for all of these; do them in this order, one commit each)
 1. **Gesture completeness**

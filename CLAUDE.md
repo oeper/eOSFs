@@ -14,10 +14,13 @@ EOS_PEN=1 tools/test/run_all.sh      # ... and the pen edition too
 ```
 
 ## What it is
-640x360 phone/tablet-style OS. Boot → lock screen (optional PIN) → Home (8 apps) → apps. Gesture bar by default (or 3 buttons),
+640x360 phone/tablet-style OS. Boot → lock screen (optional PIN) → Home (5x2 grid of installed apps, hold an icon to rearrange,
+search button / swipe down = search apps + files) → apps. Gesture bar by default (or 3 buttons),
 app switcher, control centre + notification centre (pull down from the status bar), dialogs, toasts, on-screen keyboard
 (+ physical a-z/0-9/space/enter), dark mode, 6 accents, 6 wallpapers, brightness, 12/24h clock, customisable navigation.
-Apps: Files, Notes (shares the editor with Files), Calculator, Clock (clock/stopwatch/timer), Terminal, Paint, Snake, Settings.
+Apps (ids 1-9): Files, Notes (shares the editor with Files), Calculator, Clock (clock/stopwatch/timer), Terminal, Paint, Snake, Settings,
+Store (install/remove every non-core app; core = Files, Settings, Store). Power menu (control centre → Power: lock / restart / shut down,
+`screen -1` = off), UI sounds with volume + mute (control centre, Settings → Sound), edge-swipe back chevron.
 Virtual FS in lists `fs_id/fs_name/fs_parent/fs_type/fs_data` (ids 1-5 = root + Documents/Notes/Pictures/System are protected).
 Persistence: TurboWarp Local Storage extension (project id `eos`), autosave every 150 frames + on Home; settings + FS only.
 **Everything animates** – the user insists on it: any new state change needs an enter *and* exit animation, time-based, interruptible.
@@ -39,12 +42,17 @@ Persistence: TurboWarp Local Storage extension (project id `eos`), autosave ever
   app's procedures into its own sprite, reached by broadcasts (`draw_N`, `init_N`, `term_run`). Cross-sprite state = globals only.
 * Primitives (`sp_prims.py`) append **commands** to the `cm_*` lists; at the end of `frame`, `broadcast render` (no wait) lets pool clone *i*
   draw command *i* (slot = z-order). Kinds: 1 rect 2 circle 3 rounded rect 4 icon 5 app icon 6 pill 7 text 8 rotated line. Colours = costume
-  family (white/accent) + brightness + hue effects (`pal_*` lists). Rounded rects pick one of 8 aspect × 4 radius costumes. Pool 270 (< 300 clones).
+  family (white/accent) + brightness + hue effects (`pal_*` lists). Rounded rects pick one of 8 aspect × 4 radius costumes. Pool 420 (`jgRuntime_setMaxClones` raises the limit).
 * Text: Iris renders the string onto the clone; `[`/`]` are escaped, bold = `[b]..[/b]`, the editor caret is appended as `[color=..]|[/color]`
   (`caret_u`: 2 visible, 4 transparent placeholder). `Measure` sprite gives text sizes (`P.tw`, `P.para` measure). Setters are cheap when unchanged.
 * **Never `broadcast and wait` inside a warp procedure** (busy-waits ~500 ms): the sprite build compiles procedures non-warp
   (`sb3.DEFAULT_WARP`); pen loops without broadcasts (`paint_draw`) are explicitly warp. Avoid `pen_clear` each frame (ends the VM step);
   only Paint draws with the pen (`pen_dirty`). One logical frame = one VM step – keep it that way (`fpf` check in history).
+* **Iris Text rules** (from its source): never call `renderNow` (returns a promise → blink); max width makes the text *box* that wide, so
+  single-line text is truncated by us and never given a max width; font is set explicitly (`Sans Serif`); the glyph worker is switched
+  off (sync painting); `el_text` only talks to Iris when its key string changed. `anim.js` asserts all of this on the stand-in.
+* **Blocks that return a promise end the VM step** (a frame then takes 2 ticks): `sound_setvolumeto` is one – it lives in the
+  `receive:set_vol` script, never in `frame`. Sounds: any sprite sets `snd_q` via `snd(n)`; `frame` (System owns the WAVs) plays it.
 * Paint's canvas is on the pen layer (below all sprites) – it is not visible inside switcher thumbnails.
 
 ## Drawing / input rules (os_core.py, os_sys.py)
@@ -82,9 +90,17 @@ Persistence: TurboWarp Local Storage extension (project id `eos`), autosave ever
   calculator display pulse (`cb_t`), Clock tab underline (`tab_x`) + sweeping second hand (`ssf`) + timer bar (`tm_bar`), terminal lines scroll
   in (`tl_*`), Snake glides between cells, food pulse, game-over pop (`zoom_at`), Paint colour pop + brush highlight glide (`pt_hy`).
 
+## Home grid / Store / search (os_core.py, os_sys.py)
+* `home_apps` = installed app ids in Home order. `slot_pos(i)` → cell of grid index i (`HG_*` constants); `hp_x/hp_y/hp_s` (per app id) are the
+  *eased* icon position/scale – `draw_home` moves them towards their cell, `icon_at(a)` gives the morph target for open/close animations.
+  Never hard-code icon coordinates. `home_snap()` after loading. Hold 13 frames = pick up (`hd_app`), list is reordered while dragging.
+* Store (`app_store`): `st_app/st_p` install progress runs in `bg_tasks`; remove = dialog `dlg_act 5`.
+* Search: `srch/srch_a` overlay on Home (`draw_search`, `search_scan` → `sr_k/sr_i`), keyboard `ti_act 40`; the keyboard is allowed on Home
+  only while `srch == 1`. Power: `pw/pw_a` (`draw_power`), `off_t/off_act` fade → `power_off`, `draw_off`. Back chevron: `draw_back_ind` (`bk_a`).
+
 ## Settings / customisation
 Saved fields (os_store.py, in order): dark, accent, wall, bright, wifi, bt, h24, pin, sn_best, navmode, anim_n, nav_col, nav_barw,
-nav_barh, nav_close, nav_swipe, nav_edge, nav_hold, nav_tap. Layout constants (`W H SB NB`, sizes) are still hard-coded.
+nav_barh, nav_close, nav_swipe, nav_edge, nav_hold, nav_tap. Separate keys: `sound` (vol, mute), `home` (installed app ids in order). Layout constants (`W H SB NB`, sizes) are still hard-coded.
 
 ## Gotchas (all bitten already)
 * **No `transform=` attributes in SVGs** (Scratch's loader mangles `h/H/V` under transforms). SVG size = viewBox; rotation centre in user space.
@@ -100,9 +116,11 @@ nav_barh, nav_close, nav_swipe, nav_edge, nav_hold, nav_tap. Layout constants (`
 `tools/test/harness.js`: headless Chromium, real VM + WebGL renderer, fake clock (`fps` option), shims, mouse/keys, variables, screenshots
 (`EOS_OUT`, default `/tmp/eos-test`). The harness forces `navmode 0` after the flag unless `open(pmp,{gesture:true})`.
 Suites: `interact` (apps/keyboard/files/terminal/PIN/recents), `visual`, `persist`, `robust` (protections + timings), `gesture`, `nav`
-(switcher, sideways switch, nav settings), `timebase` (fps independence), `anim` (every transition takes time + mid-animation screenshots).
+(switcher, sideways switch, nav settings), `timebase` (fps independence), `anim` (every transition takes time + mid-animation screenshots),
+`features` (Store, Home rearranging, search, power menu, sound, back chevron, their persistence). Test helper `icon(i)` = Home cell i.
 Coordinates mirror layout constants – if you move a widget, update the clicks. Always *look* at the screenshots.
 
 ## Not done yet (see NEXT_PROMPT.md)
-App store, back-gesture visual (edge swipe works but shows no chevron), Home icon dragging/rearranging, layout independence (any stage size),
-real Iris verification, Wi-Fi/Bluetooth/battery are cosmetic, no sound, Paint not persisted, physical Backspace/Shift.
+Layout independence (any stage size; `W H SB NB` are still constants), verification in real PenguinMod (the PM VM could not be built
+here), Wi-Fi/Bluetooth/battery are cosmetic, Paint not persisted, physical Backspace/Shift, Home pages (more than 10 apps), third-party apps
+in the Store (it only manages the built-in ones), the pen edition does not have sounds.

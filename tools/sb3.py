@@ -338,6 +338,8 @@ def hide(): return emit(St('looks_hide'))
 def set_size(s): return emit(St('looks_setsizeto', {'SIZE': lit(s)}))
 def set_stretch(x, y): return emit(St('looks_setStretch', {'X': lit(x), 'Y': lit(y)}))
 def costume(v): return emit(St('looks_switchcostumeto', {'COSTUME': costume_menu(v)}))
+def sound_play(name): return emit(St('sound_play', {'SOUND_MENU': lit(name)}))
+def sound_volume(v): return emit(St('sound_setvolumeto', {'VOLUME': lit(v)}))
 def backdrop(v): return emit(St('looks_switchbackdropto', {'BACKDROP': backdrop_menu(v)}))
 def effect(name, v): return emit(St('looks_seteffectto', {'VALUE': lit(v)}, {'EFFECT': [name, None]}))
 def rotation_all(): return emit(St('motion_setrotationstyle', {}, {'STYLE': ['all around', None]}))
@@ -694,6 +696,17 @@ class Costume:
                 'md5ext': self.md5 + '.svg', 'rotationCenterX': self.cx, 'rotationCenterY': self.cy}
 
 
+class Sound:
+    """16-bit mono WAV"""
+    def __init__(self, name, data, rate, samples):
+        self.name, self.data, self.rate, self.samples = name, data, rate, samples
+        self.md5 = hashlib.md5(data).hexdigest()
+
+    def meta(self):
+        return {'name': self.name, 'assetId': self.md5, 'dataFormat': 'wav', 'format': '', 'rate': self.rate,
+                'sampleCount': self.samples, 'md5ext': self.md5 + '.wav'}
+
+
 def build_project(path, sprite_name, sprite_costumes, backdrops, extensions=(), extension_urls=None):
     blocks = compile_target_blocks()
     variables = {vid: [name, init] for name, (vid, init) in Reg.vars.items()}
@@ -733,7 +746,8 @@ def build_multi(path, backdrops, extensions=(), extension_urls=None, order=None)
         targets.append({'isStage': False, 'name': u.name,
                         'variables': {vid: [n, init] for n, (vid, init) in u.locals.items()},
                         'lists': {}, 'broadcasts': {}, 'blocks': blocks, 'comments': {}, 'currentCostume': 0,
-                        'costumes': [c.meta() for c in u.costumes], 'sounds': [], 'volume': 100,
+                        'costumes': [c.meta() for c in u.costumes],
+                        'sounds': [x.meta() for x in getattr(u, 'sounds', [])], 'volume': 100,
                         'layerOrder': i + 1, 'visible': u.visible, 'x': u.x, 'y': u.y, 'size': u.size,
                         'direction': 90, 'draggable': False, 'rotationStyle': 'all around'})
     stage = {'isStage': True, 'name': 'Stage',
@@ -753,4 +767,9 @@ def build_multi(path, backdrops, extensions=(), extension_urls=None, order=None)
             if c.md5 not in seen:
                 seen.add(c.md5)
                 z.writestr(c.md5 + '.svg', c.svg)
+        for u in sprites:
+            for x in getattr(u, 'sounds', []):
+                if x.md5 not in seen:
+                    seen.add(x.md5)
+                    z.writestr(x.md5 + '.wav', x.data)
     return project

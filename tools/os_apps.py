@@ -250,6 +250,13 @@ def dlg_run():
         P.factory_reset()
     with If(V('dlg_act') == 3):
         P.paint_clear()
+    with If(V('dlg_act') == 5):
+        with If(indexof(L('home_apps'), V('dlg_arg')) > 0):
+            list_delete(L('home_apps'), indexof(L('home_apps'), V('dlg_arg')))
+        with If(indexof(L('rec'), V('dlg_arg')) > 0):
+            list_delete(L('rec'), indexof(L('rec'), V('dlg_arg')))
+        P.notify(join(item(L('app_name'), V('dlg_arg')), ' removed'))
+        P.store_save()
     with If(V('dlg_act') == 4):
         S('screen', SCR_BOOT)
         S('boot_t', 0)
@@ -281,6 +288,13 @@ def factory_reset():
     S('f_dir', 1)
     S('view', 0)
     S('sn_best', 0)
+    S('vol', 70)
+    S('mute', 0)
+    S('st_app', 0)
+    list_clear(L('home_apps'))
+    for _a in range(1, NAPPS + 1):
+        list_add(L('home_apps'), _a)
+    P.home_snap()
     P.store_save()
     P.notify('eOS has been reset')
 
@@ -348,6 +362,7 @@ def app_draw():
             (APP_PAINT, lambda: P.app_paint()),
             (APP_SNAKE, lambda: P.app_snake()),
             (APP_SET, lambda: P.app_settings()),
+            (APP_STORE, lambda: P.app_store()),
         ])
     S('cur_layer', 0)
 
@@ -364,6 +379,19 @@ def bg_tasks():
             P.notify('Timer finished')
     with If(V('tm_flash') > 0):
         change(V('tm_flash'), 0 - V('fsc'))
+    with If(V('st_app') > 0):                       # an app is being installed (keeps going in the background)
+        change(V('st_p'), V('fsc') / 55)
+        with If(V('st_p') >= 1):
+            with If(indexof(L('home_apps'), V('st_app')) == 0):
+                list_add(L('home_apps'), V('st_app'))
+                P.slot_pos(listlen(L('home_apps')))
+                list_replace(L('hp_x'), V('st_app'), V('sp_x'))
+                list_replace(L('hp_y'), V('st_app'), V('sp_y'))
+                list_replace(L('hp_s'), V('st_app'), 0)        # its Home icon pops in
+            P.notify(join(item(L('app_name'), V('st_app')), ' installed'))
+            S('st_app', 0)
+            S('st_p', 0)
+            P.store_save()
 
 
 @proc('')
@@ -1071,8 +1099,7 @@ with app_unit('Terminal'):
             with If((V('_arg') != 'dark') & (V('_arg') != 'light')):
                 P.tout('usage: theme dark|light')
         with If(V('_cmd') == 'lock'):
-            S('screen', SCR_LOCK)
-            S('pin_show', 0)
+            P.go_lock()
         with If(V('_cmd') == 'reboot'):
             P.dlg_run_reboot()
         with If(V('_cmd') == 'open'):
@@ -1516,7 +1543,7 @@ with app_unit('Settings'):
             P.settings_pin()
         with If(V('view') == 0):
             S('clip0', SB + 37)
-            P.scroll_update(596)
+            P.scroll_update(732)
             S('_y', SB + 44 - V('scroll'))
             # --- Display
             P.set_sec('DISPLAY', V('_y'))
@@ -1603,7 +1630,19 @@ with app_unit('Settings'):
             P.text_r(W - 30, V('_y') + 734, join(listlen(L('fs_id')), ' items'), 13, 0, V('tx2'))
             P.set_row('About', V('_y') + 762)
             P.text_r(W - 30, V('_y') + 784, 'eOS 1.0 for PenguinMod', 13, 0, V('tx2'))
-            P.btn(W / 2 - 80, V('_y') + 818, 160, 36, 'Factory reset', 2)
+            P.text(30, V('_y') + 806, join('640 x 360  ·  ', listlen(L('home_apps')), ' apps  ·  ', listlen(L('fs_id')) - 1,
+                                           ' files and folders'), 12, 0, V('tx2'), 400)
+            P.set_sec('SOUND', V('_y') + 826)
+            P.set_row('Volume', V('_y') + 848)
+            P.slider(82, 200, V('_y') + 870, 220, V('vol'))
+            S('vol', round_(clamp(V('sl_o'), 0, 100)))
+            P.text_r(W - 30, V('_y') + 870, V('vol'), 13, 0, V('tx2'))
+            P.set_row('Mute', V('_y') + 896)
+            P.switch(8, W - 74, V('_y') + 906, V('mute'))
+            with If(V('tap_o') == 1):
+                S('mute', 1 - V('mute'))
+                snd(1)
+            P.btn(W / 2 - 80, V('_y') + 954, 160, 36, 'Factory reset', 2)
             with If(V('tap_o') == 1):
                 P.ask('Reset eOS?', 'All files, settings and drawings will be erased.', 'Reset', 2, 0)
             P.header('Settings')
@@ -1719,3 +1758,62 @@ with app_unit('Settings'):
             S('view', 0)
 
 
+
+
+# =================================================================== Store ==
+with app_unit('Store'):
+    @proc('')
+    def app_store():
+        """every app in the catalogue: Open / Remove when installed, Get (with a progress bar) when not"""
+        S('clip0', SB + 37)
+        P.scroll_update(NAPPS * 50 + 16 - (H - NB - SB - 37))
+        S('_si', 0)
+        with repeat(NAPPS):
+            inc('_si')
+            P.stag(V('_si'))
+            S('_y', SB + 44 + (V('_si') - 1) * 50 - V('scroll') + V('stag_o'))
+            with If((V('_y') > SB - 20) & (V('_y') < H)):
+                S('_sin', 0)
+                with If(indexof(L('home_apps'), V('_si')) > 0):
+                    S('_sin', 1)
+                S('_score', 0)
+                with If((V('_si') == APP_FILES) | (V('_si') == APP_SET) | (V('_si') == APP_STORE)):
+                    S('_score', 1)
+                P.rrect(12, V('_y'), W - 24, 46, 12, V('c_surf'))
+                P.appicon(item(L('app_icon'), V('_si')), 40, V('_y') + 23, 34)
+                P.text(66, V('_y') + 15, item(L('app_name'), V('_si')), 14, 1, V('tx'), 240)
+                P.text(66, V('_y') + 32, item(L('app_desc'), V('_si')), 11, 0, V('tx2'), 300)
+                with If(V('st_app') == V('_si')):
+                    # installing: the bar fills, the percentage counts up
+                    P.rrect(W - 190, V('_y') + 20, 120, 6, 3, V('c_surf2'))
+                    P.rrect(W - 190, V('_y') + 20, 6 + 114 * clamp(V('st_p'), 0, 1), 6, 3, V('c_acc'))
+                    P.text_r(W - 26, V('_y') + 23, join(round_(clamp(V('st_p'), 0, 1) * 100), '%'), 12, 1, V('tx2'))
+                with Else():
+                    with If(V('_sin') == 1):
+                        with If(V('_score') == 1):
+                            P.text_r(W - 28, V('_y') + 23, 'Built in', 12, 0, V('tx2'))
+                        with Else():
+                            P.btn(W - 172, V('_y') + 8, 70, 30, 'Open', 0)
+                            with If(V('tap_o') == 1):
+                                P.icon_at(V('_si'))
+                                P.launch(V('_si'), V('ip_x') - 31, V('ip_y') - 31)
+                            P.btn(W - 96, V('_y') + 8, 72, 30, 'Remove', 2)
+                            with If(V('tap_o') == 1):
+                                P.ask(join('Remove ', item(L('app_name'), V('_si')), '?'),
+                                      'You can install it again from the Store at any time.', 'Remove', 5, V('_si'))
+                    with Else():
+                        P.btn(W - 96, V('_y') + 8, 72, 30, 'Get', 1)
+                        with If(V('tap_o') == 1):
+                            with If(V('st_app') == 0):
+                                S('st_app', V('_si'))
+                                S('st_p', 0)
+                            with Else():
+                                P.notify('Another app is still installing')
+        P.header('Store')
+        P.text_r(W - 16, SB + 18, join(listlen(L('home_apps')), ' of ', NAPPS, ' installed'), 12, 0, V('tx2'))
+
+    if MODE == 'sprite':
+        with Script('receive:draw_9'):
+            P.app_store()
+        with Script('receive:init_9'):
+            S('view', 0)

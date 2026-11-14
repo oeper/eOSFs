@@ -139,7 +139,44 @@ def ui_icons():
                                '<path d="M4.5 12v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/>'))
     ic.append(_icon('clock', '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>'))
     ic.append(_icon('power', '<path d="M12 3v8"/><path d="M6.6 6.6a8 8 0 1 0 10.8 0"/>'))
+    ic.append(_icon('search', '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/>'))
+    ic.append(_icon('vol', '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6"/>'
+                           '<path d="M18 6.5a8 8 0 0 1 0 11"/>'))
+    ic.append(_icon('vol_off', '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>'))
+    ic.append(_icon('download', '<path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/>'))
     return ic
+
+
+def ui_sounds():
+    """short synthesised UI sounds (16-bit mono WAV): name -> list of (freq0, freq1, seconds, gain) segments"""
+    import math, struct
+    from sb3 import Sound
+    rate = 22050
+    spec = {
+        'tap': [(880, 660, 0.035, 0.5)],
+        'open': [(520, 880, 0.09, 0.45)],
+        'close': [(820, 480, 0.09, 0.45)],
+        'notify': [(880, 880, 0.08, 0.5), (1175, 1175, 0.14, 0.5)],
+        'lock': [(660, 660, 0.05, 0.45), (440, 440, 0.08, 0.45)],
+        'unlock': [(520, 520, 0.05, 0.45), (784, 784, 0.1, 0.45)],
+        'error': [(220, 200, 0.09, 0.55), (0, 0, 0.03, 0), (220, 190, 0.12, 0.55)],
+        'key': [(1300, 1000, 0.02, 0.35)],
+    }
+    out = []
+    for name, segs in spec.items():
+        pcm, ph = [], 0.0
+        for f0, f1, dur, gain in segs:
+            n = int(rate * dur)
+            for i in range(n):
+                t = i / n
+                ph += 2 * math.pi * (f0 + (f1 - f0) * t) / rate
+                env = min(1, i / (rate * 0.004)) * (1 - t) ** 1.6           # 4 ms attack, smooth decay: no clicks
+                pcm.append(int(32767 * gain * env * (math.sin(ph) + 0.25 * math.sin(2 * ph)) / 1.25))
+        data = b''.join(struct.pack('<h', v) for v in pcm)
+        wav = (b'RIFF' + struct.pack('<I', 36 + len(data)) + b'WAVEfmt ' + struct.pack('<IHHIIHH', 16, 1, 1, rate, rate * 2, 2, 16)
+               + b'data' + struct.pack('<I', len(data)) + data)
+        out.append(Sound(name, wav, rate, len(pcm)))
+    return out
 
 
 # --- app icons: gradient rounded squares ------------------------------------
@@ -177,6 +214,11 @@ def app_icons():
                    'stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>'
                    '<circle cx="72" cy="28" r="3.2" fill="#15803D"/>'))
     ap.append(_app('settings', '9AA3B2', '5B6475', gear_icon_body()))
+    ap.append(_app('store', '38BDF8', '2563EB',
+                   '<path d="M28 40h44l-4 34a6 6 0 0 1-6 5H38a6 6 0 0 1-6-5z" fill="#FFF"/>'
+                   '<path d="M40 40v-6a10 10 0 0 1 20 0v6" fill="none" stroke="#FFF" stroke-width="6" stroke-linecap="round"/>'
+                   '<path d="M50 50v14M43 58l7 7 7-7" fill="none" stroke="#2563EB" stroke-width="5" stroke-linecap="round" '
+                   'stroke-linejoin="round"/>'))
     return ap
 
 

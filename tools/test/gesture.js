@@ -2,7 +2,7 @@ const { open } = require('./harness');
 const OUT = (process.env.EOS_OUT || '/tmp/eos-test') + '/'; require('fs').mkdirSync(OUT, { recursive: true });
 let fails = 0;
 const expect = (n, c, e = '') => { console.log((c ? 'PASS ' : 'FAIL ') + n + (c ? '' : '  -> ' + e)); if (!c) fails++; };
-const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98];
+const icon = i => [96 + ((i - 1) % 5) * 112, 177 + Math.floor((i - 1) / 5) * 98];
 (async () => {
   const h = await open(process.argv[2], { gesture: true }); const V = n => h.getVar(n);
   await h.flag(); await h.frames(80);

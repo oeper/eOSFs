@@ -16,7 +16,10 @@ for _n, _v in [('qs_p', 0), ('qs_kind', 1), ('qs_drag', 0), ('qs_cand', 0), ('qs
                ('cl_ccx', 0), ('cl_ccy', 0), ('cl_cp', 0), ('g_still', 0), ('g_rec', 0), ('g_px', 0), ('g_py', 0), ('cl_w0', W), ('cl_h0', H), ('cl_p0', 1), ('cur_w', W), ('cur_h', H), ('cur_p', 1), ('cl_on', 0), ('cl_app', 0), ('cl_t', 0), ('cl_full', 1), ('cl_s0', 1), ('cl_x0', W / 2), ('cl_y0', H / 2),
                ('cur_s', 1), ('cur_cx', W / 2), ('cur_cy', H / 2), ('navmode', 1), ('anim_n', 10), ('gmode', 0), ('gtype', 0), ('gt', 0), ('ga_s', 1), ('ga_cx', W / 2),
                ('ga_cy', H / 2), ('gx0', 0), ('boot_t', 0), ('pin_in', ''), ('pin_show', 0), ('back_o', 0), ('kb_k', ''), ('_kbx', 0),
-               ('pad_o', ''), ('rc_n', 0), ('qs_h', 0), ('lock_t', 0)]:
+               ('pad_o', ''), ('rc_n', 0), ('qs_h', 0), ('lock_t', 0),
+               ('hd_app', 0), ('hd_cand', 0), ('hd_t', 0), ('hd_last', 0), ('hd_a', 0), ('hd_ox', 0), ('hd_oy', 0),
+               ('srch', 0), ('srch_a', 0), ('sr_key', ''), ('pw', 0), ('pw_a', 0), ('off_t', 99), ('off_act', 0),
+               ('snd_n', 0), ('snd_last', 0), ('bk_a', 0), ('bk_y', 0), ('bk_side', 0)]:
     V(_n, _v)
 
 
@@ -40,10 +43,22 @@ def draw_boot():
 
 # ------------------------------------------------------------------ lock ---
 @proc('')
+def go_lock():
+    S('qs_open', 0)
+    S('kb_open', 0)
+    S('pw', 0)
+    S('srch', 0)
+    S('screen', SCR_LOCK)
+    S('pin_show', 0)
+    snd(5)
+
+
+@proc('')
 def do_unlock():
     """go Home; the lock face keeps animating away on top of it (frame -> unlock overlay)"""
     S('screen', SCR_HOME)
     S('unl_t', 0)
+    snd(6)
 
 
 @proc('')
@@ -130,6 +145,7 @@ def draw_lock():
                 S('pin_lp', 0)
                 S('pin_sh', 0)
                 P.notify('Wrong PIN')
+                snd(7)
 
 
 @proc('top')
@@ -185,45 +201,266 @@ def drop_last_pin():
 
 
 # ------------------------------------------------------------------ home ---
+@proc('a k')
+def home_icon(a, k):
+    """one Home icon (cell top-left in _ax,_ay): draw, press feedback, tap = launch, hold = pick up"""
+    P.tapr(V('_ax') - 10, V('_ay') - 6, 84, 92)
+    S('_at', V('tap_o'))
+    S('_asz', 62)
+    with If((V('hit_o') == 1) & (V('md') == 1) & (V('moved') == 0)):
+        S('_asz', 56)
+    with If((V('hit_o') == 1) & (V('press') == 1) & (V('screen') == SCR_HOME)):
+        S('hd_cand', a)
+        S('hd_t', 0)
+    with If(a == V('hd_last')):
+        S('_asz', V('_asz') * (1 + 0.18 * V('hd_a')))
+    S('_aie', 1)
+    with If(V('unl_t') < 40):
+        P.ease((V('unl_t') - V('anim_n') * 0.2 - k * 0.6) / V('anim_n'))
+        S('_aie', V('ez_o'))
+    S('_asc', item(L('hp_s'), a))
+    S('fade', 100 - (100 - V('_hfade')) * V('_aie') * V('_asc'))
+    P.appicon(item(L('app_icon'), a), V('_ax') + 32, V('_ay') + 31 + (1 - V('_aie')) * 26,
+              V('_asz') * (0.8 + 0.2 * V('_aie')) * (0.4 + 0.6 * V('_asc')))
+    with If(a == V('hd_last')):
+        S('fade', 100 - (100 - V('fade')) * (1 - V('hd_a')))      # the label of a picked-up icon fades away
+    P.text_c(V('_ax') + 32, V('_ay') + 76 + (1 - V('_aie')) * 26, item(L('app_name'), a), 12, 1, 0)
+    S('fade', 0)
+    with If(V('_at') == 1):
+        P.launch(a, V('_ax'), V('_ay'))
+
+
 @proc('')
 def draw_home():
     with If(V('dark') == 1):
         S('gh', 82)
         P.rect(0, 0, W, H, pal('black'))
         S('gh', 0)
+    S('srch_a', V('srch_a') + (V('srch') - V('srch_a')) * V('lk35'))
+    with If(abs_(V('srch') - V('srch_a')) < 0.003):
+        S('srch_a', V('srch'))
     S('_hin', 1)                                  # unlocking: clock and icons rise in, one after another
     with If(V('unl_t') < 40):
         P.ease((V('unl_t') - V('anim_n') * 0.25) / V('anim_n'))
         S('_hin', V('ez_o'))
-    S('fade', (1 - V('_hin')) * 100)
+    S('_hfade', V('srch_a') * 100)                # searching: Home dissolves behind the search sheet
+    S('fade', 100 - (100 - V('_hfade')) * V('_hin'))
     P.zoom_at(1.08 - 0.08 * V('_hin'), W / 2, 90)
     P.text_c(W / 2, 74, V('tstr'), 56, 1, 0)
     P.tw(V('tstr'), 56, 1)
     P.text(W / 2 + V('tw_o') / 2 + 6, 90, V('ampm'), 14, 1, -10, 0)
     P.text_c(W / 2, 112, V('dstr'), 14, 0, -10)
+    P.set_tf(1, W / 2, H / 2 + V('srch_a') * 18)
+    S('fade', 0)
+    S('_hnh', V('no_hit'))
+    with If((V('srch') == 1) | (V('hd_app') > 0)):
+        S('no_hit', 1)
+    # search button (also: swipe down anywhere on Home)
+    P.tapr(W - 54, SB + 8, 36, 36)
+    S('_sbt', V('tap_o'))
+    S('fade', 100 - (100 - V('_hfade')) * V('_hin'))
+    S('gh', 62)
+    P.circle(W - 36, SB + 26, 32 - 4 * ((V('hit_o') == 1) & (V('md') == 1) & (V('moved') == 0)), pal('black'))
+    S('gh', 0)
+    P.icon('search', W - 36, SB + 26, 16, 0)
+    S('fade', 0)
+    with If((V('screen') == SCR_HOME) & (V('srch') == 0) & (V('hd_app') == 0) & (V('act_layer') == 0) & (V('unl_t') > 40)):
+        with If((V('rel') == 1) & (V('moved') == 1) & (V('py') > SB + 6) & (V('py') < H - NB - 10) &
+                (V('my') - V('py') > 50) & (abs_(V('mx') - V('px')) < V('my') - V('py'))):
+            S('_sbt', 1)
+    with If((V('_sbt') == 1) & (V('screen') == SCR_HOME)):
+        P.kb_begin('Search', '', 40, 0, 30)
+        S('srch', 1)
+        S('sr_key', '?')
+        snd(1)
+    # icons: every app eases towards its cell, so installing / removing / rearranging slides them
+    S('_hi', 0)
+    with repeat(listlen(L('home_apps'))):
+        inc('_hi')
+        S('_ai', item(L('home_apps'), V('_hi')))
+        with If(V('_ai') != V('hd_app')):
+            P.slot_pos(V('_hi'))
+            S('_ax', item(L('hp_x'), V('_ai')))
+            S('_ay', item(L('hp_y'), V('_ai')))
+            S('_ax', V('_ax') + (V('sp_x') - V('_ax')) * V('lk35'))
+            S('_ay', V('_ay') + (V('sp_y') - V('_ay')) * V('lk35'))
+            with If(abs_(V('sp_x') - V('_ax')) + abs_(V('sp_y') - V('_ay')) < 0.4):
+                S('_ax', V('sp_x'))
+                S('_ay', V('sp_y'))
+            list_replace(L('hp_x'), V('_ai'), V('_ax'))
+            list_replace(L('hp_y'), V('_ai'), V('_ay'))
+            S('_as', item(L('hp_s'), V('_ai')))
+            with If(V('_as') < 1):
+                S('_as', V('_as') + (1 - V('_as')) * V('lk30'))
+                with If(V('_as') > 0.997):
+                    S('_as', 1)
+                list_replace(L('hp_s'), V('_ai'), V('_as'))
+            P.home_icon(V('_ai'), V('_hi'))
+    # hold an icon to pick it up, drag it to another cell: the others make room
+    with If(V('md') == 0):
+        S('hd_cand', 0)
+        S('hd_app', 0)
+    with If((V('hd_cand') > 0) & (V('hd_app') == 0) & (V('md') == 1)):
+        with If(V('moved') == 0):
+            change(V('hd_t'), V('fsc'))
+            with If(V('hd_t') > 13):
+                S('hd_app', V('hd_cand'))
+                S('hd_last', V('hd_cand'))
+                S('moved', 1)
+                S('hd_ox', V('mx') - item(L('hp_x'), V('hd_app')))
+                S('hd_oy', V('my') - item(L('hp_y'), V('hd_app')))
+                snd(1)
+        with Else():
+            S('hd_cand', 0)
+    S('_hdt', 0)
+    with If(V('hd_app') > 0):
+        S('_hdt', 1)
+        list_replace(L('hp_x'), V('hd_app'), V('mx') - V('hd_ox'))
+        list_replace(L('hp_y'), V('hd_app'), V('my') - V('hd_oy'))
+        S('_hs', clamp(round_((item(L('hp_x'), V('hd_app')) - HG_X0) / HG_DX), 0, HG_COLS - 1) +
+          clamp(round_((item(L('hp_y'), V('hd_app')) - HG_Y0) / HG_DY), 0, 1) * HG_COLS + 1)
+        with If(V('_hs') > listlen(L('home_apps'))):
+            S('_hs', listlen(L('home_apps')))
+        with If(V('_hs') != indexof(L('home_apps'), V('hd_app'))):
+            list_delete(L('home_apps'), indexof(L('home_apps'), V('hd_app')))
+            list_insert(L('home_apps'), V('_hs'), V('hd_app'))
+        S('_ai', V('hd_app'))
+        S('_ax', item(L('hp_x'), V('_ai')))
+        S('_ay', item(L('hp_y'), V('_ai')))
+        P.home_icon(V('_ai'), 1)                    # the picked-up icon is drawn last = on top
+    S('hd_a', V('hd_a') + (V('_hdt') - V('hd_a')) * V('lk35'))
+    with If(abs_(V('_hdt') - V('hd_a')) < 0.003):
+        S('hd_a', V('_hdt'))
+    S('no_hit', V('_hnh'))
+    P.set_tf(1, W / 2, H / 2)
+    with If(V('srch_a') > 0.003):
+        P.draw_search()
+
+
+@proc('')
+def search_scan():
+    """results for the query in ti -> sr_k (1 app, 2 file/folder), sr_i (app id / file id); at most 4"""
+    list_clear(L('sr_k'))
+    list_clear(L('sr_i'))
+    with If(V('ti') != ''):
+        S('_si', 0)
+        with repeat(listlen(L('home_apps'))):
+            inc('_si')
+            with If(contains(item(L('app_name'), item(L('home_apps'), V('_si'))), V('ti')) & (listlen(L('sr_k')) < 4)):
+                list_add(L('sr_k'), 1)
+                list_add(L('sr_i'), item(L('home_apps'), V('_si')))
+        S('_si', 1)                                   # item 1 is the root folder
+        with repeat(listlen(L('fs_id')) - 1):
+            inc('_si')
+            with If(contains(item(L('fs_name'), V('_si')), V('ti')) & (listlen(L('sr_k')) < 4)):
+                list_add(L('sr_k'), 2)
+                list_add(L('sr_i'), item(L('fs_id'), V('_si')))
+
+
+@proc('k')
+def search_open(k):
+    S('srch', 0)
+    S('kb_open', 0)
+    S('_so', item(L('sr_i'), k))
+    with If(item(L('sr_k'), k) == 1):
+        P.icon_at(V('_so'))
+        P.launch(V('_so'), V('ip_x') - 31, V('ip_y') - 31)
+    with Else():
+        P.fs_idx(V('_so'))
+        S('_sty', item(L('fs_type'), V('fs_i')))
+        S('_spa', item(L('fs_parent'), V('fs_i')))
+        P.icon_at(APP_FILES)
+        P.launch(APP_FILES, V('ip_x') - 31, V('ip_y') - 31)
+        S('scroll', 0)
+        with If(V('_sty') == 1):
+            S('f_dir', V('_so'))
+            S('view', 0)
+        with Else():
+            S('f_dir', V('_spa'))
+            S('ed_file', V('_so'))
+            S('view', 1)
+
+
+@proc('')
+def draw_search():
+    """search sheet over Home: field + live results (apps, files); Enter opens the first one"""
+    S('_sa', V('srch_a'))
+    S('gh', 100 - 50 * V('_sa'))
+    P.rect(0, 0, W, H, pal('black'))
+    S('gh', 0)
+    S('_snh', V('no_hit'))
+    with If(V('srch') == 0):
+        S('no_hit', 1)
+    with If(join(V('ti'), '/', listlen(L('fs_id')), '/', listlen(L('home_apps'))) != V('sr_key')):
+        S('sr_key', join(V('ti'), '/', listlen(L('fs_id')), '/', listlen(L('home_apps'))))
+        with If(V('srch') == 1):
+            P.search_scan()
+            S('pg_t', 0)
+            S('pg_slide', 0)
+    with If((V('kb_done') == 1) & (V('srch') == 1)):
+        S('kb_done', 0)
+        with If(listlen(L('sr_k')) > 0):
+            P.search_open(1)
+    S('fade', (1 - V('_sa')) * 100)
+    P.set_tf(1, W / 2, H / 2 - (1 - V('_sa')) * 24)
+    P.tapr(W - 104, SB + 12, 44, 38)
+    with If(V('tap_o') == 1):
+        S('srch', 0)
+        S('kb_open', 0)
+    P.rrect(60, SB + 12, W - 120, 38, 19, V('c_surf'))
+    P.icon('search', 84, SB + 31, 18, V('tx2'))
+    P.icon('close', W - 82, SB + 31, 14, V('tx2'))
+    with If(V('ti') == ''):
+        P.text(104, SB + 31, 'Search apps and files', 14, 0, V('tx2'), 0)
+    if MODE == 'sprite':
+        with If(V('srch') == 1):
+            S('caret_u', 2 + 2 * ((V('fclk') % 30) >= 18))
+        P.text(104, SB + 31, V('ti'), 14, 0, V('tx'), W - 240)
+        S('caret_u', 0)
+    else:
+        P.text(104, SB + 31, V('ti'), 14, 0, V('tx'), W - 240)
+    S('_sn', listlen(L('sr_k')))
+    with If(V('ti') != ''):
+        with If(V('_sn') == 0):
+            P.rrect(60, SB + 56, W - 120, 34, 14, V('c_surf'))
+            P.text(84, SB + 73, 'No results', 13, 0, V('tx2'), 0)
+        with Else():
+            P.rrect(60, SB + 56, W - 120, V('_sn') * 30 + 6, 14, V('c_surf'))
+            S('_sk', 0)
+            with repeat(V('_sn')):
+                inc('_sk')
+                P.stag(V('_sk'))
+                S('_sy', SB + 59 + (V('_sk') - 1) * 30)
+                S('fade', 100 - V('_sa') * 100 * (1 - V('stag_o') / 26))      # rows fade in one after another
+                P.tapr(60, V('_sy'), W - 120, 30)
+                S('_st', V('tap_o'))
+                with If((V('hit_o') == 1) & (V('md') == 1) & (V('moved') == 0)):
+                    P.rrect(64, V('_sy') + 1, W - 128, 28, 10, V('c_surf2'))
+                S('_sid', item(L('sr_i'), V('_sk')))
+                with If(item(L('sr_k'), V('_sk')) == 1):
+                    P.appicon(item(L('app_icon'), V('_sid')), 84, V('_sy') + 15, 20)
+                    P.text(104, V('_sy') + 15, item(L('app_name'), V('_sid')), 13, 1, V('tx'), 300)
+                    P.text_r(W - 78, V('_sy') + 15, 'App', 11, 0, V('tx2'))
+                with Else():
+                    P.fs_idx(V('_sid'))
+                    with If(item(L('fs_type'), V('fs_i')) == 1):
+                        P.icon('folder', 84, V('_sy') + 15, 18, V('tx2'))
+                        P.text_r(W - 78, V('_sy') + 15, 'Folder', 11, 0, V('tx2'))
+                    with Else():
+                        P.icon('file', 84, V('_sy') + 15, 18, V('tx2'))
+                        P.text_r(W - 78, V('_sy') + 15, 'File', 11, 0, V('tx2'))
+                    P.text(104, V('_sy') + 15, item(L('fs_name'), V('fs_i')), 13, 1, V('tx'), 300)
+                with If(V('_st') == 1):
+                    P.search_open(V('_sk'))
+            S('fade', (1 - V('_sa')) * 100)
     P.set_tf(1, W / 2, H / 2)
     S('fade', 0)
-    S('_ai', 0)
-    with repeat(8):
-        inc('_ai')
-        S('_ax', 93 + ((V('_ai') - 1) % 4) * 130)
-        S('_ay', 146 + floor((V('_ai') - 1) / 4) * 98)
-        P.tapr(V('_ax') - 10, V('_ay') - 6, 84, 92)
-        S('_at', V('tap_o'))
-        S('_asz', 62)
-        with If((V('hit_o') == 1) & (V('md') == 1) & (V('moved') == 0)):
-            S('_asz', 56)
-        S('_aie', 1)
-        with If(V('unl_t') < 40):
-            P.ease((V('unl_t') - V('anim_n') * 0.2 - V('_ai') * 0.6) / V('anim_n'))
-            S('_aie', V('ez_o'))
-        S('fade', (1 - V('_aie')) * 100)
-        P.appicon(item(L('app_icon'), V('_ai')), V('_ax') + 32, V('_ay') + 31 + (1 - V('_aie')) * 26,
-                  V('_asz') * (0.8 + 0.2 * V('_aie')))
-        P.text_c(V('_ax') + 32, V('_ay') + 76 + (1 - V('_aie')) * 26, item(L('app_name'), V('_ai')), 12, 1, 0)
-        S('fade', 0)
-        with If(V('_at') == 1):
-            P.launch(V('_ai'), V('_ax'), V('_ay'))
+    P.tapr(60, SB + 12, W - 164, 38)                 # the field itself swallows taps
+    P.tapr(0, SB, W, H - SB - NB)                    # tap anywhere else: close
+    with If(V('tap_o') == 1):
+        S('srch', 0)
+        S('kb_open', 0)
+    S('no_hit', V('_snh'))
 
 
 @proc('a ox oy')
@@ -231,6 +468,8 @@ def launch(a, ox, oy):
     # tapping the icon of the app that is already opening must not restart its animation
     with If((V('screen') == SCR_APP) & (V('app') == a) & (V('open_t') < V('anim_n'))):
         stop_this()
+    snd(2)
+    S('srch', 0)
     S('view', 0)
     S('scroll', 0)
     S('kb_open', 0)
@@ -302,6 +541,7 @@ def set_tf(s_, cx, cy):
 def start_close(a, w, h, cx, cy, p):
     """move app `a` (drawn as a w x h window at centre cx,cy, `p` = how app-like it still is) onto the closing layer
     and go Home at once; the window keeps morphing into its icon while Home is already usable"""
+    snd(3)
     S('cl_app', a)
     S('cl_w0', w)
     S('cl_h0', h)
@@ -359,8 +599,9 @@ def draw_closing():
     """the closing window (own layer so another app can open meanwhile)"""
     with If(V('cl_on') == 1):
         S('_ce', 1 - (1 - V('cl_t') / V('anim_n')) * (1 - V('cl_t') / V('anim_n')))
-        S('_cix', 93 + ((V('cl_app') - 1) % 4) * 130 + 31)
-        S('_ciy', 146 + floor((V('cl_app') - 1) / 4) * 98 + 31)
+        P.icon_at(V('cl_app'))
+        S('_cix', V('ip_x'))
+        S('_ciy', V('ip_y'))
         S('_cp', V('cl_p0') * (1 - V('_ce')))
         S('_cfa', clamp((V('_cp') - 0.35) / 0.65, 0, 1))
         S('_cia', clamp((0.65 - V('_cp')) / 0.65, 0, 1))
@@ -392,10 +633,7 @@ def draw_closing():
 def bar_tap():
     """what a plain tap on the gesture bar does (Settings → Navigation)"""
     with If(V('nav_tap') == 1):
-        S('qs_open', 0)
-        S('kb_open', 0)
-        S('screen', SCR_LOCK)
-        S('pin_show', 0)
+        P.go_lock()
     with If(V('nav_tap') == 2):
         P.nav_recents()
     with If(V('nav_tap') == 3):
@@ -831,6 +1069,7 @@ def navbar(a):
 @proc('')
 def nav_home():
     P.store_save()
+    S('srch', 0)
     S('kb_open', 0)
     S('qs_open', 0)
     with If((V('screen') == SCR_APP) & (V('gmode') == 0) & (V('open_t') >= V('anim_n'))):
@@ -859,6 +1098,13 @@ def nav_recents():
 @proc('')
 def nav_back():
     S('pg_back', 1)                                  # the next page change slides in from the left
+    with If(V('pw') == 1):
+        S('pw', 0)
+        stop_this()
+    with If(V('srch') == 1):
+        S('srch', 0)
+        S('kb_open', 0)
+        stop_this()
     with If(V('kb_open') == 1):
         S('kb_open', 0)
     with Else():
@@ -876,8 +1122,10 @@ def nav_back():
 
 # --------------------------------------------------------------- keyboard --
 L('kb_r1l', list('qwertyuiop'))
-L('app_view', [0] * 8)
-L('app_scroll', [0] * 8)
+L('app_view', [0] * NAPPS)
+L('app_scroll', [0] * NAPPS)
+L('sr_k')
+L('sr_i')
 
 KB_PAGES = {
     # page: (row1, row2, row3 letters)
@@ -920,6 +1168,7 @@ def drop_last():
 def kb_type(ch):
     with If(length(V('ti')) < V('kb_max')):
         S('ti', join(V('ti'), ch))
+    snd(8)
     with If(V('kb_shift') == 1):
         S('kb_shift', 0)
 
@@ -1057,7 +1306,7 @@ V('pk_held', '')
 
 
 # ------------------------------------------------------------ quick settings
-CC_H, NC_H = 150, 236          # panel heights (control centre / notification centre)
+CC_H, NC_H = 186, 236          # panel heights (control centre / notification centre)
 L('qt_a', [0, 0, 0, 0])        # tile on/off animation
 
 
@@ -1167,8 +1416,8 @@ def draw_cc():
             S('_qic', 'bt')
         with If(V('_qi') == 4):
             S('_qon', 0)
-            S('_qn', 'Lock')
-            S('_qic', 'lock')
+            S('_qn', 'Power')
+            S('_qic', 'power')
         S('_qa', item(L('qt_a'), V('_qi')))
         S('_qa', V('_qa') + (V('_qon') - V('_qa')) * V('lk35'))
         with If(abs_(V('_qon') - V('_qa')) < 0.003):
@@ -1196,11 +1445,126 @@ def draw_cc():
                 S('bt', 1 - V('bt'))
             with If(V('_qi') == 4):
                 S('qs_open', 0)
-                S('screen', SCR_LOCK)
-                S('pin_show', 0)
+                S('pw', 1)
+            snd(1)
     P.icon('sun', 52, SB + 108, 18, V('tx2'))
     P.slider(90, 76, SB + 108, W - 150, V('bright'))
     S('bright', clamp(V('sl_o'), 15, 100))
+    # volume: the speaker icon mutes, the slider cross-fades with it
+    S('mute_a', V('mute_a') + (V('mute') - V('mute_a')) * V('lk35'))
+    with If(abs_(V('mute') - V('mute_a')) < 0.003):
+        S('mute_a', V('mute'))
+    P.tapr(36, SB + 128, 34, 34)
+    with If(V('tap_o') == 1):
+        S('mute', 1 - V('mute'))
+        snd(1)
+    S('_qf', V('fade'))
+    S('fade', 100 - (100 - V('_qf')) * (1 - V('mute_a')))
+    P.icon('vol', 52, SB + 144, 18, V('tx2'))
+    S('fade', 100 - (100 - V('_qf')) * V('mute_a'))
+    P.icon('vol_off', 52, SB + 144, 18, V('tx2'))
+    S('fade', 100 - (100 - V('_qf')) * (1 - 0.6 * V('mute_a')))
+    S('_v0', V('vol'))
+    P.slider(91, 76, SB + 144, W - 150, V('vol'))
+    S('vol', round_(clamp(V('sl_o'), 0, 100)))
+    with If(V('vol') != V('_v0')):
+        S('mute', 0)
+        with If((V('fclk') - V('vol_tk')) > 5):       # audible feedback while dragging, a few ticks a second
+            S('vol_tk', V('fclk'))
+            snd(1)
+    S('fade', V('_qf'))
+
+
+V('mute_a', 0)
+V('vol_tk', 0)
+PW_ITEMS = (('Lock', 'lock'), ('Restart', 'reset'), ('Shut down', 'power'))
+
+
+@proc('')
+def draw_power():
+    """power menu: lock / restart / shut down (control centre -> Power); pops in, fades out"""
+    S('cur_layer', 2)
+    with If(V('pw') == 0):
+        S('cur_layer', -1)
+    S('gh', 100 - 84 * V('pw_a'))
+    P.rect(0, 0, W, H, pal('black'))
+    S('gh', 0)
+    S('fade', (1 - V('pw_a')) * 100)
+    for k, (label, ic) in enumerate(PW_ITEMS):
+        cx = W / 2 + (k - 1) * 130
+        P.ease(V('pw_a') * 1.6 - k * 0.25)            # the three buttons pop one after another
+        P.zoom_at(0.6 + 0.4 * V('ez_o'), cx, 168)
+        P.tapr(cx - 50, 118, 100, 124)
+        S('_pwt', V('tap_o'))
+        S('_pwi', 0)
+        with If((V('hit_o') == 1) & (V('md') == 1) & (V('moved') == 0)):
+            S('_pwi', 6)
+        if k == 2:
+            P.circle(cx, 162, 68 - V('_pwi'), pal('red'))
+            P.icon(ic, cx, 162, 28, 0)
+        else:
+            P.circle(cx, 162, 68 - V('_pwi'), V('c_surf'))
+            P.icon(ic, cx, 162, 28, V('tx'))
+        P.text_c(cx, 214, label, 13, 1, 0)
+        with If(V('_pwt') == 1):
+            S('pw', 0)
+            if k == 0:
+                P.go_lock()
+            else:
+                P.store_save()
+                S('off_act', k)
+                S('off_t', 0)
+                snd(5)
+    P.set_tf(1, W / 2, H / 2)
+    P.text_c(W / 2, 286, 'Tap anywhere to cancel', 12, 0, -30)
+    S('fade', 0)
+    P.tapr(0, 0, W, H)
+    with If(V('tap_o') == 1):
+        S('pw', 0)
+    S('cur_layer', 0)
+
+
+@proc('')
+def draw_off():
+    """powered off: black screen, a faint power symbol; tap to start again"""
+    P.rect(0, 0, W, H, pal('black'))
+    P.ease((V('pg_t') - 20) / 30)
+    S('gh', 100 - V('ez_o') * (38 + 12 * mathop('sin', V('fclk') * 4)))
+    P.icon('power', W / 2, H / 2 - 8, 30, 0)
+    P.text_c(W / 2, H / 2 + 26, 'Tap to power on', 12, 0, 0)
+    S('gh', 0)
+    with If((V('press') == 1) & (V('pg_t') > 12)):
+        S('press', 0)
+        S('moved', 1)
+        S('screen', SCR_BOOT)
+        S('boot_t', 0)
+
+
+@proc('')
+def draw_back_ind():
+    """edge-swipe back: a chevron bubble grows out of the edge with the finger and turns accent once it will trigger"""
+    S('_bkt', 0)
+    with If((V('gtype') == 2) & (V('md') == 1)):
+        S('_bkt', clamp(abs_(V('mx') - V('px')) / 40, 0, 1))
+        S('bk_y', clamp(V('my'), SB + 30, H - NB - 30))
+        S('bk_side', 0)
+        with If(V('px') > W / 2):
+            S('bk_side', 1)
+    S('bk_a', V('bk_a') + (V('_bkt') - V('bk_a')) * V('lk50'))
+    with If(abs_(V('_bkt') - V('bk_a')) < 0.003):
+        S('bk_a', V('_bkt'))
+    with If(V('bk_a') > 0.003):
+        S('_bkx', V('bk_a') * 34 - 16)
+        with If(V('bk_side') == 1):
+            S('_bkx', W - V('_bkx'))
+        S('gh', 100 - V('bk_a') * 75)
+        with If(V('bk_a') > 0.97):
+            P.circle(V('_bkx'), V('bk_y'), 30 + 10 * V('bk_a'), V('c_acc'))
+        with Else():
+            P.circle(V('_bkx'), V('bk_y'), 30 + 10 * V('bk_a'), pal('black'))
+        S('gh', 100 - V('bk_a') * 100)
+        P.icon('chev_l', V('_bkx') - 1, V('bk_y'), 12 + 8 * V('bk_a'), 0)
+        S('gh', 0)
 
 
 @proc('')
@@ -1402,6 +1766,9 @@ def frame():
     S('lk35', 1 - mathop('e ^', V('fsc') * math.log(0.65)))
     S('lk50', 1 - mathop('e ^', V('fsc') * math.log(0.5)))
     P.input_()
+    with If(V('off_t') < 90):                     # shutting down: nothing reacts any more
+        S('press', 0)
+        S('rel', 0)
     P.set_base(1, W / 2, H / 2)
     S('no_hit', 0)
     P.panel_input()
@@ -1424,15 +1791,23 @@ def frame():
     S('act_layer', 0)
     with If((V('qs_open') == 1) | (V('screen') == SCR_REC)):        # a panel that is closing never blocks input
         S('act_layer', 1)
-    with If(V('dlg') == 1):
+    with If((V('dlg') == 1) | (V('pw') == 1)):
         S('act_layer', 2)
     with If(V('gmode') == 1):
         S('act_layer', 3)
     S('cur_layer', 0)
     S('clip0', SB)
     S('clip1', H - NB)
-    with If(V('screen') != SCR_APP):
+    with If(V('screen') != SCR_HOME):
+        S('srch', 0)
+        S('hd_app', 0)
+    with If((V('screen') != SCR_APP) & (V('srch') == 0)):
         S('kb_open', 0)
+    with If(V('screen') <= SCR_LOCK):
+        S('pw', 0)
+    S('pw_a', V('pw_a') + (V('pw') - V('pw_a')) * V('lk35'))
+    with If(abs_(V('pw') - V('pw_a')) < 0.003):
+        S('pw_a', V('pw'))
     # ---- everything that appears/disappears eases towards its target (time based)
     with If((V('screen') == SCR_APP) & (V('open_t') >= V('anim_n')) & (V('gmode') == 0)):
         S('_sm', 1)
@@ -1474,6 +1849,7 @@ def frame():
         (SCR_HOME, lambda: (P.draw_home(), P.draw_closing(), P.draw_rec_exit(), P.draw_unlock_overlay())),
         (SCR_APP, lambda: P.draw_app()),
         (SCR_REC, lambda: P.draw_recents()),
+        (SCR_OFF, lambda: P.draw_off()),
     ])
     change(V('rx_t'), V('fsc'))
     with If(V('kb_a') > 0.01):
@@ -1494,8 +1870,11 @@ def frame():
     with If(V('qs_p') > 0.003):
         P.draw_panels()
         P.statusbar(0)
+    P.draw_back_ind()
     with If(V('dlg_a') > 0.01):
         P.draw_dialog()
+    with If(V('pw_a') > 0.003):
+        P.draw_power()
     P.draw_toast()
     S('_psig', V('screen') * 10000000 + V('app') * 1000000 + V('view') * 100000 + V('clk_tab') * 10000 + V('f_dir'))
     with If(V('_psig') != V('pg_sig')):
@@ -1504,7 +1883,7 @@ def frame():
         S('pg_dir', 1 - 2 * V('pg_back'))
         S('pg_slide', 1)
     S('pg_back', 0)
-    S('_lsig', listlen(L('fs_id')) * 1000 + listlen(L('rec')))
+    S('_lsig', listlen(L('fs_id')) * 1000 + listlen(L('rec')) + listlen(L('home_apps')) * 100000 + V('st_app') * 1000000)
     with If(V('_lsig') != V('ls_sig')):            # a list changed (file added/removed): rows re-settle, page stays
         with If(V('pg_t') > V('anim_n')):
             S('pg_t', 0)
@@ -1514,7 +1893,7 @@ def frame():
         change(V('pg_t'), V('fsc'))
     # a press that caused a screen/view change must not activate widgets of the new screen on release
     S('_sig', V('screen') * 100000 + V('app') * 1000 + V('view') * 100 + V('qs_open') * 10 + V('dlg') * 3 +
-      V('kb_open'))
+      V('kb_open') + V('srch') * 50 + V('pw') * 5000)
     with If(V('_sig') != V('ui_sig')):
         S('ui_sig', V('_sig'))
         S('moved', 1)
@@ -1534,17 +1913,57 @@ def frame():
         P.rect(0, 0, W, H, pal('black'))
         S('gh', 0)
         change(V('wp_t'), V('fsc'))
+    # restart / shut down: everything fades to black first
+    with If(V('off_t') < 90):
+        P.ease(V('off_t') / (V('anim_n') * 1.6))
+        S('gh', 100 - V('ez_o') * 100)
+        P.rect(0, 0, W, H, pal('black'))
+        S('gh', 0)
+        change(V('off_t'), V('fsc'))
+        with If(V('off_t') > V('anim_n') * 1.6 + 5):
+            S('off_t', 99)
+            P.power_off()
     # screen brightness
     with If(V('bright') < 100):
         S('gh', 100 - (100 - V('bright')) * 0.75)
         P.rect(0, 0, W, H, pal('black'))
         S('gh', 0)
     effect('GHOST', 0)
+    with If(V('snd_q') > 0):                      # UI sounds are queued by any sprite and played here (System owns them)
+        with If((V('mute') == 0) & (V('vol') > 0)):
+            sound_play(item(L('snd_names'), V('snd_q')))
+            inc('snd_n')
+        S('snd_last', V('snd_q'))
+        S('snd_q', 0)
+    with If(V('vol') != V('vol_set')):            # "set volume" waits a tick, so it lives in its own script (never in the frame)
+        S('vol_set', V('vol'))
+        broadcast('set_vol')
     if MODE == 'sprite':
         broadcast('render')                      # the Element clones draw this frame's buffer right after this script yields
 
 
+@proc('')
+def power_off():
+    S('qs_open', 0)
+    S('kb_open', 0)
+    S('dlg', 0)
+    S('srch', 0)
+    S('gmode', 0)
+    S('gtype', 0)
+    S('cl_on', 0)
+    S('open_t', 99)
+    S('toast_t', 0)
+    list_clear(L('rec'))
+    backdrop(7)
+    with If(V('off_act') == 1):
+        S('screen', SCR_BOOT)
+        S('boot_t', 0)
+    with Else():
+        S('screen', SCR_OFF)
+
+
 V('_sm', 0)
+V('vol_set', -1)
 V('ui_sig', 0)
 V('pg_back', 0)
 V('pg_dir', 1)
@@ -1559,6 +1978,8 @@ V('_sig', 0)
 
 def make_main_script():
     """green-flag script (built after every module is imported so all procedures exist)"""
+    with Script('receive:set_vol'):
+        sound_volume(V('vol'))
     with Script('flag'):
         hide()
         stage_size(W, H)
@@ -1582,7 +2003,19 @@ def make_main_script():
         S('app', 0)
         list_clear(L('rec'))
         S('pk_held', '')
+        S('srch', 0)
+        S('srch_a', 0)
+        S('pw', 0)
+        S('pw_a', 0)
+        S('off_t', 99)
+        S('hd_app', 0)
+        S('hd_cand', 0)
+        S('hd_a', 0)
+        S('snd_q', 0)
+        S('vol_set', -1)
+        S('st_app', 0)
         P.store_load()
+        P.home_snap()
         P.theme()
         S('th_dark', V('dark'))
         S('th_t', 99)

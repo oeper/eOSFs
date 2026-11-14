@@ -44,9 +44,16 @@ def dispatch(expr, cases, default=None):
 # ---------------------------------------------------------------- state ----
 # screens
 SCR_BOOT, SCR_LOCK, SCR_HOME, SCR_APP, SCR_REC = 0, 1, 2, 3, 4
-APPS = ['Files', 'Notes', 'Calculator', 'Clock', 'Terminal', 'Paint', 'Snake', 'Settings']
-APP_ICON = ['files', 'notes', 'calc', 'clock', 'term', 'paint', 'snake', 'settings']
-APP_FILES, APP_NOTES, APP_CALC, APP_CLOCK, APP_TERM, APP_PAINT, APP_SNAKE, APP_SET = range(1, 9)
+SCR_OFF = -1               # powered off (below every 'screen > ...' guard on purpose)
+SND = ['tap', 'open', 'close', 'notify', 'lock', 'unlock', 'error', 'key']
+APPS = ['Files', 'Notes', 'Calculator', 'Clock', 'Terminal', 'Paint', 'Snake', 'Settings', 'Store']
+APP_ICON = ['files', 'notes', 'calc', 'clock', 'term', 'paint', 'snake', 'settings', 'store']
+APP_DESC = ['Browse and manage files', 'Quick text notes', 'Everyday calculator', 'Clock, stopwatch and timer',
+            'Command line', 'Draw with your finger', 'The classic game', 'System settings', 'Install and remove apps']
+APP_FILES, APP_NOTES, APP_CALC, APP_CLOCK, APP_TERM, APP_PAINT, APP_SNAKE, APP_SET, APP_STORE = range(1, 10)
+NAPPS = len(APPS)
+CORE_APPS = (APP_FILES, APP_SET, APP_STORE)          # cannot be removed in the Store
+HG_COLS, HG_X0, HG_DX, HG_Y0, HG_DY = 5, 64, 112, 146, 98      # Home grid: columns, first cell, pitch
 
 for _n, _v in [
     ('screen', 0), ('app', 0), ('view', 0), ('frame_n', 0),
@@ -74,6 +81,16 @@ L('nt_time')
 L('rec')         # recent apps (most recent last)
 L('app_name', APPS)
 L('app_icon', APP_ICON)
+L('app_desc', APP_DESC)
+L('snd_names', SND)
+V('st_app', 0)
+V('st_p', 0)
+L('home_apps', list(range(1, NAPPS + 1)))      # installed apps in Home order
+L('hp_x', [0] * NAPPS)                         # per app: eased Home icon position (cell top-left) and scale
+L('hp_y', [0] * NAPPS)
+L('hp_s', [1] * NAPPS)
+for _n, _v in [('sp_x', 0), ('sp_y', 0), ('ip_x', 0), ('ip_y', 0), ('snd_q', 0), ('vol', 70), ('mute', 0)]:
+    V(_n, _v)
 L('dow', ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'])
 L('mon', ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
           'October', 'November', 'December'])
@@ -97,6 +114,41 @@ def stag(k):
     """entrance offset (px, 26 -> 0) for list item k, driven by pg_t -> stag_o"""
     P.ease((V('pg_t') - k * 2) / (V('anim_n') * 0.8))
     S('stag_o', (1 - V('ez_o')) * 26)
+
+
+@proc('i')
+def slot_pos(i):
+    """Home grid cell i (1-based) -> sp_x, sp_y (cell top-left; the icon centre is +32,+31)"""
+    S('sp_x', HG_X0 + ((i - 1) % HG_COLS) * HG_DX)
+    S('sp_y', HG_Y0 + floor((i - 1) / HG_COLS) * HG_DY)
+
+
+@proc('a')
+def icon_at(a):
+    """where app a's Home icon currently is -> ip_x, ip_y (icon centre); below the screen when it is not installed"""
+    with If(indexof(L('home_apps'), a) == 0):
+        S('ip_x', W / 2)
+        S('ip_y', H + 50)
+    with Else():
+        S('ip_x', item(L('hp_x'), a) + 31)
+        S('ip_y', item(L('hp_y'), a) + 31)
+
+
+@proc('')
+def home_snap():
+    """put every Home icon straight into its cell (boot / after loading)"""
+    S('_hk', 0)
+    with repeat(listlen(L('home_apps'))):
+        inc('_hk')
+        P.slot_pos(V('_hk'))
+        list_replace(L('hp_x'), item(L('home_apps'), V('_hk')), V('sp_x'))
+        list_replace(L('hp_y'), item(L('home_apps'), V('_hk')), V('sp_y'))
+        list_replace(L('hp_s'), item(L('home_apps'), V('_hk')), 1)
+
+
+def snd(n):
+    """queue UI sound n for this frame (played by the System sprite): 1 tap 2 open 3 close 4 notify 5 lock 6 unlock 7 error 8 key"""
+    return S('snd_q', n)
 
 
 # ------------------------------------------------------------ primitives ---
@@ -209,6 +261,8 @@ def btn(x, y, w, h, label, style):
     P.rrect(x + V('_bi'), y + V('_bi'), w - V('_bi') * 2, h - V('_bi') * 2, 9, V('_bc'))
     P.text_c(x + w / 2, y + h / 2, label, 13 - V('_bi') * 0.25, 1, V('_btx'))
     S('tap_o', V('_bt'))
+    with If(V('_bt') == 1):
+        snd(1)
 
 
 @proc('id x y on')
@@ -341,6 +395,7 @@ def time_update():
 def notify(msg):
     S('toast', msg)
     S('toast_t', 100)
+    snd(4)
     list_insert(L('nt_txt'), 1, msg)             # also kept in the notification centre
     list_insert(L('nt_time'), 1, V('tstr'))
     with If(listlen(L('nt_txt')) > 30):

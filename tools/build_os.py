@@ -17,7 +17,7 @@ import sp_element
 import sp_assets
 
 BLANK = Costume('blank', '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2" viewBox="0 0 2 2"/>', 1, 1)
-APP_SPRITES = ['Files', 'Notes', 'Calculator', 'Clock', 'Terminal', 'Paint', 'Snake', 'Settings']
+APP_SPRITES = ['Files', 'Notes', 'Calculator', 'Clock', 'Terminal', 'Paint', 'Snake', 'Settings', 'Store']
 IRIS_URL = 'https://extensions.penguinmod.com/extensions/Gen1x/iris-text.js'
 
 
@@ -30,6 +30,7 @@ def main(out):
         u = UNITS[name]
         u.costumes = sp_assets.element_costumes() if name == 'Element' else [BLANK]
         u.prune = name not in ('Element', 'Measure')
+    UNITS['System'].sounds = assets.ui_sounds()
     costumes, backdrops, widths, info = assets.build()
     proj = sb3.build_multi(out, backdrops, extensions=['pen', 'jgRuntime', 'localstorage', 'g1nxIrisText'],
                            order=order, extension_urls={'localstorage': 'https://extensions.turbowarp.org/local-storage.js',

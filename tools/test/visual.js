@@ -1,6 +1,6 @@
 const { open } = require('./harness');
 const OUT = (process.env.EOS_OUT || '/tmp/eos-test') + '/'; require('fs').mkdirSync(OUT, { recursive: true });
-const icon = i => [125 + ((i - 1) % 4) * 130, 177 + Math.floor((i - 1) / 4) * 98];
+const icon = i => [96 + ((i - 1) % 5) * 112, 177 + Math.floor((i - 1) / 5) * 98];
 let fails = 0;
 const expect = (n, c, e = '') => { console.log((c ? 'PASS ' : 'FAIL ') + n + (c ? '' : '  -> ' + e)); if (!c) fails++; };
 (async () => {
@@ -11,7 +11,7 @@ const expect = (n, c, e = '') => { console.log((c ? 'PASS ' : 'FAIL ') + n + (c 
   await h.click(320, 200); await h.frames(3); await h.shot(OUT + 'v_pin.png');
   await h.setVar('pin', ''); await h.click(244, 285); // Back key on pad
   await h.frames(3);
-  await h.click(320, 200); await h.frames(3);
+  await h.click(320, 128); await h.frames(3);
   expect('unlock without pin', await V('screen') === 2, await V('screen'));
   // launch animation mid-way
   await h.click(...icon(2)); await h.frames(4); await h.shot(OUT + 'v_anim.png'); await h.frames(10);
