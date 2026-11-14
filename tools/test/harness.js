@@ -66,59 +66,95 @@ async function open(pmp, opts = {}) {
     pt.nowObj = { now: () => window.__t };
     pt.start();
 
-    // ---- stand-in for the Iris Text extension (renders the string onto the sprite's own skin with a 2D canvas)
+    // ---- stand-in for the Iris Text extension, mirroring the real extension's behaviour (read from its source):
+    //  * default font is "Handwriting"; text box = max(text width, max width) with the text aligned inside it;
+    //    the sprite sits on the box centre (x) and, with "grow downward only", on the centre of the first line (y)
+    //  * setters only mark the text dirty; painting happens before the next draw - or, while the glyph worker is on
+    //    (default), a few draws later (asynchronous) -> a changed text flickers unless the worker is switched off
+    //  * `refresh text` returns a promise (a script using it resumes later!)
     const IR = 'g1nxIrisText_';
-    const st = (t) => (t.__iris = t.__iris || { size: 32, color: '#9966ff', maxw: null, lh: 1.2, text: '', w: 0, h: 0, skin: null, dirty: true, on: false });
+    const iris = window.__iris = { worker: true, paints: 0, promiseCalls: 0 };
+    const FONTS = { 'Sans Serif': 'Inter, "Helvetica Neue", Arial, sans-serif', 'Handwriting': '"Comic Sans MS", "Segoe Script", cursive', 'Serif': 'serif' };
+    const st = (t) => (t.__iris = t.__iris || { size: 32, color: '#9966ff', font: 'Handwriting', align: 'center', maxw: null, lh: 1.2, grow: false,
+      text: '', w: 0, h: 0, skin: null, dirty: true, on: false, layoutOk: false, delay: 0, lines: [], bold: false });
     const P = vm.runtime._primitives;
-    const unesc = (s) => s.replace(/\\\\([\[\]])/g, '$1');
-    P[IR + 'setText'] = (a, u) => { const s = st(u.target); const t = String(a.TEXT); if (s.text !== t) { s.text = t; s.dirty = true; } s.on = true; };
-    P[IR + 'setBaseColor'] = (a, u) => { const s = st(u.target); const c = String(a.COLOR); if (s.color !== c) { s.color = c; s.dirty = true; } };
-    P[IR + 'setBaseSize'] = (a, u) => { const s = st(u.target); const z = Math.max(1, Number(a.SIZE)); if (s.size !== z) { s.size = z; s.dirty = true; } };
-    P[IR + 'setAlign'] = () => {};
-    P[IR + 'setMaxWidth'] = (a, u) => { const s = st(u.target); const w = Number(a.WIDTH); if (s.maxw !== w) { s.maxw = w; s.dirty = true; } };
-    P[IR + 'clearMaxDimensions'] = (a, u) => { const s = st(u.target); if (s.maxw !== null) { s.maxw = null; s.dirty = true; } };
-    P[IR + 'setLineHeight'] = (a, u) => { const s = st(u.target); const l = Number(a.HEIGHT); if (s.lh !== l) { s.lh = l; s.dirty = true; } };
+    const dirtyAll = new Set();
+    const mark = (t, s) => { s.dirty = true; s.layoutOk = false; s.delay = iris.worker ? 3 : 0; dirtyAll.add(t); };
+    const setter = (field, conv) => (a, u) => { const s = st(u.target); const v = conv(a); if (s[field] !== v) { s[field] = v; mark(u.target, s); } };
+    P[IR + 'setText'] = (a, u) => { const s = st(u.target); const t = String(a.TEXT); if (s.text !== t || !s.on) { s.text = t; s.on = true; mark(u.target, s); } };
+    P[IR + 'setBaseColor'] = setter('color', a => String(a.COLOR));
+    P[IR + 'setBaseSize'] = setter('size', a => Math.max(1, Number(a.SIZE)));
+    P[IR + 'setFont'] = setter('font', a => String(a.FONT));
+    P[IR + 'setAlign'] = setter('align', a => String(a.ALIGN).toLowerCase());
+    P[IR + 'setMaxWidth'] = setter('maxw', a => Number(a.WIDTH));
+    P[IR + 'clearMaxDimensions'] = setter('maxw', () => null);
+    P[IR + 'setLineHeight'] = setter('lh', a => Number(a.HEIGHT));
+    P[IR + 'setGrowDownwardOnly'] = setter('grow', a => String(a.ENABLED).toLowerCase() === 'on');
+    P[IR + 'setGlyphWorkerEnabledBlock'] = (a) => { iris.worker = String(a.ENABLED) === 'on'; };
     P[IR + 'clearText'] = (a, u) => {
-      const t = u.target, s = st(t); s.on = false; s.text = ''; s.dirty = true;
+      const t = u.target, s = st(t); s.on = false; s.text = ''; dirtyAll.delete(t);
       const c = t.getCostumes()[t.currentCostume]; if (c && t.renderer) t.renderer.updateDrawableSkinId(t.drawableID, c.skinId);
     };
-    P[IR + 'getExactTextWidth'] = (a, u) => st(u.target).w;
-    P[IR + 'getExactTextHeight'] = (a, u) => st(u.target).h;
-    P[IR + 'renderNow'] = (a, u) => {
-      const t = u.target, s = st(t);
-      if (!s.on || !s.dirty) return;
-      s.dirty = false;
-      let raw = s.text, bold = false;
-      raw = raw.replace('[color=rgba(0,0,0,0)]|[/color]', ' ');           // invisible caret placeholder
-      if (raw.startsWith('[b]')) { bold = true; raw = raw.replace('[b]', '').replace('[/b]', ''); }
-      raw = raw.replace(/(?<!\\)\[\/?color[^\]]*\]/g, '');
-      const text = unesc(raw);
-      const cv = document.createElement('canvas'); const ctx = cv.getContext('2d');
-      const font = `${bold ? '600 ' : '500 '}${s.size}px Inter, "Helvetica Neue", Arial, sans-serif`;
-      ctx.font = font;
+    const mctx = document.createElement('canvas').getContext('2d');
+    const layout = (s) => {
+      if (s.layoutOk) return;
+      let raw = s.text; s.bold = false; s.caret = null;
+      const cm = raw.match(/\[color=([^\]]*)\]\|\[\/color\]$/);
+      if (cm) { s.caret = cm[1]; raw = raw.slice(0, cm.index); }
+      if (raw.startsWith('[b]')) { s.bold = true; raw = raw.replace('[b]', '').replace('[/b]', ''); }
+      const text = raw.replace(/\\([\[\]])/g, '$1');
+      s.fontCss = `${s.bold ? '600 ' : '500 '}${s.size}px ${FONTS[s.font] || s.font}`;
+      mctx.font = s.fontCss;
       const lines = [];
       for (const para of text.split('\n')) {
         if (!s.maxw) { lines.push(para); continue; }
         let cur = '';
         for (const word of para.split(/(?<=[ ])/)) {
-          if (ctx.measureText(cur + word).width > s.maxw && cur) { lines.push(cur); cur = word; } else cur += word;
+          if (mctx.measureText(cur + word).width > s.maxw && cur) { lines.push(cur); cur = word; } else cur += word;
         }
         lines.push(cur);
       }
-      const lh = s.size * s.lh;
-      s.w = Math.max(1, Math.ceil(Math.max(...lines.map(l => ctx.measureText(l).width))));
-      s.h = Math.max(1, Math.ceil(lh * lines.length));
-      const RES = 2;
-      cv.width = s.w * RES; cv.height = s.h * RES;
-      const c2 = cv.getContext('2d'); c2.scale(RES, RES); c2.font = font; c2.fillStyle = s.color; c2.textBaseline = 'middle';
-      lines.forEach((l, i) => c2.fillText(l, 0, lh * (i + 0.5)));
+      s.lines = lines;
+      s.tw = Math.max(0, ...lines.map(l => mctx.measureText(l).width));
+      s.lineH = s.size * s.lh;
+      s.th = s.lineH * lines.length;
+      s.layoutOk = true;
+    };
+    const paint = (t) => {
+      const s = st(t); if (!s.on) return;
+      layout(s); iris.paints++;
+      const boxW = Math.max(1, Math.ceil(Math.max(s.maxw || 0, s.tw))), boxH = Math.max(1, Math.ceil(s.th));
+      const RES = 2, cv = document.createElement('canvas'); cv.width = boxW * RES; cv.height = boxH * RES;
+      const c = cv.getContext('2d'); c.scale(RES, RES); c.font = s.fontCss; c.textBaseline = 'middle';
+      s.lines.forEach((l, i) => {
+        const lw = c.measureText(l).width;
+        const x = s.align === 'center' ? (boxW - lw) / 2 : s.align === 'right' ? boxW - lw : 0;
+        c.fillStyle = s.color; c.fillText(l, x, s.lineH * (i + 0.5));
+        if (s.caret && i === s.lines.length - 1 && !s.caret.startsWith('rgba')) { c.fillStyle = s.caret; c.fillRect(x + lw + 1, s.lineH * i + s.lineH * 0.15, 1.5, s.lineH * 0.7); }
+      });
+      const rc = [boxW / 2, s.grow ? s.lineH / 2 : boxH / 2];
       if (t.renderer) {
         const old = s.skin;
-        s.skin = t.renderer.createBitmapSkin(cv, RES, [s.w / 2, s.h / 2]);
+        s.skin = t.renderer.createBitmapSkin(cv, RES, rc);
         t.renderer.updateDrawableSkinId(t.drawableID, s.skin);
         if (old !== null) t.renderer.destroySkin(old);
       }
+      s.dirty = false;
     };
+    // paint pending texts right before each draw (the real extension hooks renderer.draw the same way)
+    const origDraw = renderer.draw.bind(renderer);
+    renderer.draw = function () {
+      for (const t of Array.from(dirtyAll)) { const s = st(t); if (s.delay > 0) { s.delay--; continue; } dirtyAll.delete(t); if (s.on) paint(t); }
+      return origDraw();
+    };
+    P[IR + 'getExactTextWidth'] = (a, u) => { const s = st(u.target); layout(s); return s.maxw ? Math.min(s.tw, s.maxw) : s.tw; };
+    P[IR + 'getExactTextHeight'] = (a, u) => { const s = st(u.target); layout(s); return s.th; };
+    P[IR + 'renderNow'] = () => { iris.promiseCalls++; return new Promise(res => setTimeout(res, 50)); };
+    // ---- PenguinMod core blocks used by the sprite build
+    P.operator_indexOfTextInText = (a) => { const f = String(a.TEXT1), s = String(a.TEXT2); return s.includes(f) ? s.indexOf(f) + 1 : 0; };
+    P.operator_replaceAll = (a) => String(a.text).replaceAll(String(a.term), String(a.res));
+    P.operator_getLettersFromIndexToIndexInTextFixed = (a) => String(a.TEXT).substring((Number(a.INDEX1) || 1) - 1, Number(a.INDEX2) || 1);
+    P.jgRuntime_setMaxClones = () => {};
 
     window.vm = vm; window.renderer = renderer;
     window.errors = [];

@@ -142,6 +142,16 @@ const between = (v, a, b) => v > a && v < b;
   expect('status bar tap opens with animation', await V('qs_open') === 1 && between(await V('qs_p'), 0.05, 0.95), await V('qs_p'));
   await h.frames(12); await h.click(500, 8, 1); await h.frames(14);
   expect('status bar tap closes again', await V('qs_p') === 0);
+  // ---- Iris Text integration: never wait on a promise, paint synchronously, nothing repaints while idle
+  await h.drag(320, 350, 320, 140, 6); await h.frames(30);
+  const ir0 = await h.page.evaluate(() => Object.assign({}, window.__iris));
+  await h.frames(40);
+  const ir1 = await h.page.evaluate(() => Object.assign({}, window.__iris));
+  expect('no promise-returning Iris block is ever called', ir1.promiseCalls === 0, ir1.promiseCalls);
+  expect('glyph worker is switched off (synchronous text painting)', ir1.worker === false);
+  expect('idle screen repaints no text', ir1.paints - ir0.paints <= 2, ir1.paints - ir0.paints);
+  const fonts = await h.page.evaluate(() => { const s = new Set(); for (const t of vm.runtime.targets) if (t.__iris && t.__iris.on) s.add(t.__iris.font); return [...s]; });
+  expect('every text uses the Sans Serif font', fonts.length === 1 && fonts[0] === 'Sans Serif', JSON.stringify(fonts));
   console.log('threads alive', await h.page.evaluate(() => vm.runtime.threads.length));
   await h.close();
   console.log(fails ? fails + ' FAILED' : 'ALL OK');

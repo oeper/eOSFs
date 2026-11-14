@@ -117,7 +117,13 @@ def textcmd(x, y, s, size, bold, tint, maxw, anchor, lh):
 
 @proc('x y s size bold tint maxw')
 def text(x, y, s, size, bold, tint, maxw):
-    P.textcmd(x, y, s, size, bold, tint, maxw, 0, 0)
+    """single line, x = left edge.  maxw > 0: cut the string (with an ellipsis) so it roughly fits - Iris cannot clip"""
+    with If((maxw > 0) & (length(s) * size * 0.56 > maxw)):
+        P.textcmd(x, y, join(Op('operator_getLettersFromIndexToIndexInTextFixed',
+                                {'INDEX1': Lit(1), 'INDEX2': clamp(floor(maxw / (size * 0.56)) - 1, 1, 999), 'TEXT': s}),
+                             '…'), size, bold, tint, 0, 0, 0)
+    with Else():
+        P.textcmd(x, y, s, size, bold, tint, 0, 0, 0)
 
 
 @proc('cx y s size bold tint')
@@ -153,10 +159,10 @@ def tw(s, size, bold):
 def para(x, y, w, s, size, lh, tint, draw):
     """wrapped multi-line text, (x, y) = centre of the first line.  draw 0 = only measure -> p_y (centre of last line)"""
     with If(draw == 1):
-        P.textcmd(x, y - lh / 2, s, size, 0, tint, w, 3, lh)
+        P.textcmd(x, y, s, size, 0, tint, w, 3, lh)
     with Else():
         P.measure(s, size, 0, w, lh)
-        S('p_y', y + V('ms_h') - lh / 2 - (lh - size) * 0)
+        S('p_y', y + V('ms_h') - lh)
         S('p_x', x)
 
 

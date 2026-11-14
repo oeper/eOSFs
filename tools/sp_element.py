@@ -7,49 +7,49 @@ Slot order is z-order (clones are sent to the front in slot order at start-up).
 """
 from sb3 import *
 
-POOL = 270                        # < 300 (stock Scratch clone limit)
+POOL = 420                        # clones in the pool; the clone limit is raised with jgRuntime "set max clones"
 HEX = ['%02X' % i for i in range(256)]
 IRIS = 'g1nxIrisText'
-
-
-def _escape(src):
-    """proc body: esc_o = src with [ and ] escaped for Iris markup"""
-    S_ = set_
-    esc_o, i, ch = VL('esc_o', ''), VL('esc_i', 1), VL('esc_c', '')
-    S_(esc_o, src)
-    with If(contains(src, '[') | contains(src, ']')):
-        S_(esc_o, '')
-        S_(i, 1)
-        with repeat(length(src)):
-            S_(ch, letter(i, src))
-            with If((ch == '[') | (ch == ']')):
-                S_(esc_o, join(esc_o, '\\'))
-            S_(esc_o, join(esc_o, ch))
-            change(i, 1)
-    return esc_o
-
+FONT = 'Sans Serif'
 
 _set = set_
 
 
-def _text_setup(size, tint, bold, maxw, lh, src):
-    """configure the Iris state of *this sprite* and render the string; leaves width/height in tx_w/tx_h"""
-    tx_w, tx_h = VL('tx_w', 0), VL('tx_h', 0)
+def onoff(v):
+    return Menu(IRIS + '_menu_ONOFF', 'ONOFF', v)
+
+
+def exact(a, b):
+    """case-sensitive string equality (Scratch's = ignores case) using PenguinMod's `index of text in text`"""
+    return (length(a) == length(b)) & (Op('operator_indexOfTextInText', {'TEXT1': lit(a), 'TEXT2': lit(b)}) == 1)
+
+
+def iris_escape(src):
+    """[ and ] start Iris markup -> escape them"""
+    r = Op('operator_replaceAll', {'text': lit(src), 'term': Lit('['), 'res': Lit('\\[')})
+    return Op('operator_replaceAll', {'text': r, 'term': Lit(']'), 'res': Lit('\\]')})
+
+
+def iris_configure(size, tint, bold, maxw, lh, src, align_expr):
+    """Push style + string to Iris for *this sprite*.  Never yields: `refresh text` returns a promise (the script would
+    resume a frame later, after the command buffer has been rebuilt), so it is not used - Iris repaints by itself before
+    the next draw, and the width reporter lays the text out synchronously."""
     gray = VL('gray', 255)
+    emit(St(IRIS + '_setFont', {'FONT': Menu(IRIS + '_menu_FONT', 'FONT', FONT)}))
+    emit(St(IRIS + '_setGrowDownwardOnly', {'ENABLED': onoff('on')}))       # sprite position = centre of the FIRST line
     call_ext(IRIS + '_setBaseSize', SIZE=size)
     _set(gray, clamp(round_(255 * (1 + tint / 100)), 0, 255))
     emit(St(IRIS + '_setBaseColor', {'COLOR': ColorIn(join('#', item(L('hx'), gray + 1), item(L('hx'), gray + 1),
                                                         item(L('hx'), gray + 1)))}))
-    emit(St(IRIS + '_setAlign', {'ALIGN': Menu(IRIS + '_menu_ALIGN', 'ALIGN', 'left')}))
+    emit(St(IRIS + '_setAlign', {'ALIGN': Menu(IRIS + '_menu_ALIGN', 'ALIGN', align_expr)}))
     with If(maxw > 0):
-        call_ext(IRIS + '_setMaxWidth', WIDTH=maxw)
+        call_ext(IRIS + '_setMaxWidth', WIDTH=maxw)       # NOTE: Iris makes the text box this wide (text aligned inside it)
     with Else():
         emit(St(IRIS + '_clearMaxDimensions'))
     with If(lh > 0):
         call_ext(IRIS + '_setLineHeight', HEIGHT=lh / size)
     with Else():
         call_ext(IRIS + '_setLineHeight', HEIGHT=1.2)
-    esc = _escape(src)
     car = VL('car_s', '')
     _set(car, '')
     with If(floor(bold / 2) == 1):
@@ -57,12 +57,9 @@ def _text_setup(size, tint, bold, maxw, lh, src):
     with If(floor(bold / 2) == 2):
         _set(car, '[color=rgba(0,0,0,0)]|[/color]')
     with If(bold % 2 == 1):
-        call_ext(IRIS + '_setText', TEXT=join('[b]', esc, '[/b]', car))
+        call_ext(IRIS + '_setText', TEXT=join('[b]', iris_escape(src), '[/b]', car))
     with Else():
-        call_ext(IRIS + '_setText', TEXT=join(esc, car))
-    emit(St(IRIS + '_renderNow'))
-    _set(tx_w, ext_reporter(IRIS + '_getExactTextWidth'))
-    _set(tx_h, ext_reporter(IRIS + '_getExactTextHeight'))
+        call_ext(IRIS + '_setText', TEXT=join(iris_escape(src), car))
 
 
 def define():
@@ -70,50 +67,73 @@ def define():
     with unit('Element', uselib=False):
         slot, shown, k_last, a_last, dir_on = VL('slot', 0), VL('shown', 0), VL('k_last', 0), VL('a_last', ''), VL('dir_on', 0)
         z_cur = V('z_cur', 0)
+        # per-clone copies of the command (read once, before anything else, so the clone never mixes two frames)
+        e = {n: VL('e_' + n, 0) for n in ('k', 'x', 'y', 'w', 'h', 'a', 's', 'g', 't', 'e', 'u', 'p', 'm', 'l')}
+        key, key_last, tx_w, al = VL('t_key', ''), VL('t_key_last', ''), VL('tx_w', 0), VL('t_al', 'left')
 
-        @proc('')
+        @proc('', warp=True)
+        def el_read():
+            for n in e:
+                _set(e[n], item(L('cm_' + n), slot))
+
+        @proc('', warp=True)
         def el_shape():
-            k = item(L('cm_k'), slot)
             with If(k_last == 7):
                 emit(St(IRIS + '_clearText'))
                 _set(a_last, '')
-            with If(item(L('cm_a'), slot) != a_last):
-                _set(a_last, item(L('cm_a'), slot))
+                _set(key_last, '')
+            with If(~exact(e['a'], a_last)):
+                _set(a_last, e['a'])
                 costume(a_last)
-            set_stretch(item(L('cm_w'), slot) / item(L('cm_p'), slot) * 100,
-                        item(L('cm_h'), slot) / item(L('cm_m'), slot) * 100)
-            effect('COLOR', item(L('cm_e'), slot))
-            effect('BRIGHTNESS', item(L('cm_t'), slot))
-            effect('GHOST', item(L('cm_g'), slot))
-            with If(k == 8):
-                point(90 + item(L('cm_u'), slot))
+            set_stretch(e['w'] / e['p'] * 100, e['h'] / e['m'] * 100)
+            effect('COLOR', e['e'])
+            effect('BRIGHTNESS', e['t'])
+            effect('GHOST', e['g'])
+            with If(e['k'] == 8):
+                point(90 + e['u'])
                 _set(dir_on, 1)
             with Else():
                 with If(dir_on == 1):
                     point(90)
                     _set(dir_on, 0)
-            goto(item(L('cm_x'), slot), item(L('cm_y'), slot))
-            _set(k_last, k)
+            goto(e['x'], e['y'])
+            _set(k_last, e['k'])
 
-        @proc('')
+        @proc('', warp=True)
         def el_text():
-            sc = item(L('cm_w'), slot)
-            anchor = item(L('cm_p'), slot)
-            _text_setup(item(L('cm_s'), slot), item(L('cm_t'), slot), item(L('cm_u'), slot), item(L('cm_m'), slot),
-                        item(L('cm_l'), slot), item(L('cm_a'), slot))
-            tx_w, tx_h = VL('tx_w'), VL('tx_h')
-            set_stretch(sc * 100, sc * 100)
+            """anchor (e_p): 0 = x is the left edge, 1 = centre, 2 = right edge, 3 = wrapped paragraph (x = left, box e_m wide).
+            y is always the centre of the first line."""
+            _set(key, join('k', e['s'], '|', e['t'], '|', e['u'], '|', e['p'], '|', e['m'], '|', e['l'], '|',
+                           V('c_acc'), '|', e['a']))
+            with If((k_last != 7) | ~exact(key, key_last)):
+                _set(al, 'left')
+                with If(e['p'] == 1):
+                    _set(al, 'center')
+                with If(e['p'] == 2):
+                    _set(al, 'right')
+                with If(e['p'] == 3):
+                    iris_configure(e['s'], e['t'], e['u'], e['m'], e['l'], e['a'], al)
+                with Else():
+                    iris_configure(e['s'], e['t'], e['u'], 0, e['l'], e['a'], al)
+                    _set(tx_w, ext_reporter(IRIS + '_getExactTextWidth'))
+                _set(key_last, key)
+            set_stretch(e['w'] * 100, e['w'] * 100)
             effect('COLOR', 0)
             effect('BRIGHTNESS', 0)
-            effect('GHOST', item(L('cm_g'), slot))
-            point(90)
-            _set(dir_on, 0)
-            goto(item(L('cm_x'), slot) + ((anchor == 0) | (anchor == 3)) * (tx_w * sc / 2) - (anchor == 2) * (tx_w * sc / 2),
-                 item(L('cm_y'), slot) - (anchor == 3) * (tx_h * sc / 2))
+            effect('GHOST', e['g'])
+            with If(dir_on == 1):
+                point(90)
+                _set(dir_on, 0)
+            # Iris centres the text box on the sprite: shift by half the box so the anchor lands on x
+            goto(e['x'] + (e['p'] == 0) * (tx_w * e['w'] / 2) - (e['p'] == 2) * (tx_w * e['w'] / 2) +
+                 (e['p'] == 3) * (e['m'] * e['w'] / 2), e['y'])
             _set(k_last, 7)
 
         with Script('receive:init_pool'):
             hide()
+            emit(St('jgRuntime_setMaxClones', {'MAX': Menu('jgRuntime_menu_cloneLimit', 'cloneLimit', 1000)}))
+            # paint text synchronously: with the glyph worker a changed text shows up a few frames late (flicker)
+            emit(St(IRIS + '_setGlyphWorkerEnabledBlock', {'ENABLED': onoff('off')}))
             _set(slot, 0)
             with repeat(POOL):
                 _set(slot, slot + 1)
@@ -131,7 +151,8 @@ def define():
         with Script('receive:render'):
             with If(slot > 0):
                 with If(slot <= V('cm_n')):
-                    with If(item(L('cm_k'), slot) == 7):
+                    P.el_read()
+                    with If(e['k'] == 7):
                         P.el_text()
                     with Else():
                         P.el_shape()
@@ -146,6 +167,6 @@ def define():
     with unit('Measure', uselib=False):
         with Script('receive:measure'):
             hide()
-            _text_setup(V('ms_size'), 0, V('ms_bold'), V('ms_maxw'), V('ms_lh'), V('ms_s'))
-            _set(V('ms_w'), VL('tx_w'))
-            _set(V('ms_h'), VL('tx_h'))
+            iris_configure(V('ms_size'), 0, V('ms_bold'), V('ms_maxw'), V('ms_lh'), V('ms_s'), 'left')
+            _set(V('ms_w'), ext_reporter(IRIS + '_getExactTextWidth'))
+            _set(V('ms_h'), ext_reporter(IRIS + '_getExactTextHeight'))
